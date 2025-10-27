@@ -56,6 +56,8 @@ app.use((req, res, next) => {
   next();
 });
 
+app.set('trust proxy', 1);
+
 app.use(session({
   secret: config.session.secret,
   resave: config.session.resave,

@@ -12,7 +12,7 @@ const config = {
   // Database Configuration (PostgreSQL)
   database: {
     user: 'footballusr',
-    host: 'localhost',
+    host: '192.168.13.11',
     database: 'football',
     password: 'password',
     port: 5432,
@@ -21,12 +21,7 @@ const config = {
 
   // CORS Configuration
   cors: {
-    origins: [
-      'http://localhost:5173',
-      'http://192.168.1.171:5173',
-      'http://localhost:3000',
-      'http://127.0.0.1:5173'
-    ],
+    origins: 'https://footballpicks.jasetheace.com',
     credentials: true
   },
 
@@ -36,8 +31,9 @@ const config = {
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: false, // Set to true in production with HTTPS
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      secure: true, // Set to true in production with HTTPS
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      sameSite: 'none'
     }
   },
 
@@ -63,7 +59,7 @@ const config = {
     user: 'footballusr',
     password: 'password',
     database: 'football',
-    host: 'localhost',
+    host: '192.168.13.11',
     port: 5432
   },
 

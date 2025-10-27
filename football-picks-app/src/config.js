@@ -6,9 +6,9 @@ const config = {
     // Local development URL
     localUrl: 'http://localhost:3001',
     // Production/server URL - UPDATE THIS FOR DEPLOYMENT
-    serverUrl: 'http://192.168.1.171:3001',
+    serverUrl: 'https://fpapi.jasetheace.com',
     // Port number for error messages
-    port: 3001
+    port: 443
   },
 
   // Admin user configuration
