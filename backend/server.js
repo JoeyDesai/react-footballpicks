@@ -141,7 +141,7 @@ app.get('/api/user-tags', requireAuth, async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     
     // Validate and sanitize input
     const validation = validateLoginCredentials(email, password);
@@ -213,7 +213,7 @@ app.post('/api/create-account', async (req, res) => {
     }
 
     // Check if email already exists for current year
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     const existingUser = await pool.query(
       'SELECT id FROM pickers WHERE email = $1 AND year = $2',
       [sanitizedEmail, currentYear]
@@ -244,7 +244,7 @@ app.post('/api/create-account', async (req, res) => {
 // Get weeks
 app.get('/api/weeks', requireAuth, async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     
     const result = await pool.query(`
       SELECT id, number, startdate, 
@@ -388,7 +388,7 @@ app.post('/api/picks/:weekId', requireAuth, async (req, res) => {
 // Get overall standings
 app.get('/api/overall-standings', requireAuth, async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     const tag = req.query.tag || 0;
     
     let tagFilter = '';
@@ -419,7 +419,7 @@ app.get('/api/overall-standings', requireAuth, async (req, res) => {
 // Get overall standings with weekly breakdown
 app.get('/api/overall-standings-detailed', requireAuth, async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     const tag = req.query.tag || 0;
     
     // Get all weeks for the current year that have started
@@ -718,7 +718,7 @@ app.get('/api/weekly-standings-classic/:weekId', requireAuth, async (req, res) =
 // Get home stats
 app.get('/api/home-stats', requireAuth, async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     
     // Get current week
     const currentWeekResult = await pool.query(`
@@ -764,7 +764,7 @@ app.get('/api/home-stats', requireAuth, async (req, res) => {
 // Get team stats
 app.get('/api/team-stats', requireAuth, async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     const result = await pool.query(`
       SELECT t.name,
              COALESCE(won.totalweight, 0) as pointsWon,
@@ -844,7 +844,7 @@ const requireAdmin = async (req, res, next) => {
 // Get all users for admin
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     
     const result = await pool.query(`
       SELECT id, email, nickname, realname, active
@@ -864,7 +864,7 @@ app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
 app.get('/api/admin/picks-status/:weekId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { weekId } = req.params;
-    const currentYear = new Date().getFullYear();
+    const currentYear = config.app.currentYear;
     
     // Get all users
     const usersResult = await pool.query(`
