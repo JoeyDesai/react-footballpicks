@@ -1040,8 +1040,9 @@ function OverallStandings() {
 
         /* Common table styles */
         .div-scroll-container {
-          max-height: 70vh;
-          overflow-y: auto;
+          height: auto;
+          max-height: none;
+          overflow-y: visible;
           overflow-x: auto;
           width: fit-content;
           max-width: 100%;
@@ -1168,7 +1169,7 @@ function OverallStandings() {
 
         .score {
           font-weight: 700;
-          color: rgba(100, 150, 255, 1);
+          color: rgba(150, 200, 255, 1);
         }
 
         .correct {
@@ -1333,7 +1334,7 @@ function OverallStandings() {
 
         .score {
           font-weight: 700;
-          color: rgba(100, 150, 255, 1);
+          color: rgba(150, 200, 255, 1);
         }
 
         .correct {
@@ -1409,7 +1410,7 @@ function OverallStandings() {
 
         .week-score {
           font-weight: 700;
-          color: rgba(100, 150, 255, 1);
+          color: rgba(150, 200, 255, 1);
           font-size: 0.9rem;
           line-height: 1;
         }
@@ -1461,7 +1462,7 @@ function OverallStandings() {
         .stat-value {
           font-size: 2rem;
           font-weight: 700;
-          color: rgba(100, 150, 255, 1);
+          color: rgba(150, 200, 255, 1);
           margin-bottom: 0.5rem;
         }
 

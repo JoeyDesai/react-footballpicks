@@ -1273,8 +1273,9 @@ function WeeklyStandings() {
 
         /* Common table styles */
         .div-scroll-container {
-          max-height: 70vh;
-          overflow-y: auto;
+          height: auto;
+          max-height: none;
+          overflow-y: visible;
           overflow-x: auto;
           width: fit-content;
           max-width: 100%;
@@ -1507,7 +1508,7 @@ function WeeklyStandings() {
 
         .score {
           font-weight: 700;
-          color: rgba(100, 150, 255, 1);
+          color: rgba(150, 200, 255, 1);
         }
 
         .correct {
@@ -1523,7 +1524,7 @@ function WeeklyStandings() {
         .total-score {
           font-size: 0.9rem;
           font-weight: 700;
-          color: rgba(100, 150, 255, 1);
+          color: rgba(150, 200, 255, 1);
         }
 
         .potential-score {
