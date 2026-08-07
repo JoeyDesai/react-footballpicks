@@ -12,9 +12,9 @@ const config = {
   // Database Configuration (PostgreSQL)
   database: {
     user: 'footballusr',
-    host: '192.168.13.11',
+    host: '192.168.13.15',
     database: 'football',
-    password: 'password',
+    password: 'pickcowboys',
     port: 5432,
     ssl: false // Set to { rejectUnauthorized: false } for production
   },
@@ -57,15 +57,15 @@ const config = {
   // PHP Database Configuration (for DB update scripts)
   phpDatabase: {
     user: 'footballusr',
-    password: 'password',
+    password: 'pickcowboys',
     database: 'football',
-    host: '192.168.13.11',
+    host: '192.168.13.15',
     port: 5432
   },
 
   // Application Settings
   app: {
-    currentYear: 2025,
+    currentYear: 2026,
     debug: false
   }
 };

@@ -11,7 +11,7 @@ $dbhost = 'localhost';
 $dbport = '5432';
 
 // Current year setting
-$CurYear = 2025;
+$CurYear = 2026;
 
 // Database connection string
 $dbConnectionString = "host=$dbhost port=$dbport dbname=$dbname user=$dbuser password=$dbpass";
