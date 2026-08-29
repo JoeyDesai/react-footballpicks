@@ -130,22 +130,26 @@ const sanitizeFormData = (formData) => {
  * @returns {Object} - Validation result with sanitized data
  */
 const validateLoginCredentials = (email, password) => {
-  const sanitizedEmail = sanitizeEmail(email);
-  const sanitizedPassword = sanitizeString(password);
+  // Credentials are passed through verbatim (aside from trimming whitespace
+  // around the email). Transforming them would lock out existing accounts
+  // whose stored values contain characters like _ % & ' — parameterized
+  // queries already prevent SQL injection, so only presence/length is checked.
+  const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+  const rawPassword = typeof password === 'string' ? password : '';
 
-  if (!sanitizedEmail || sanitizedEmail.length < 1) {
+  if (!trimmedEmail || trimmedEmail.length < 1 || trimmedEmail.length > 255) {
     return { valid: false, error: 'Email is required' };
   }
 
-  if (!sanitizedPassword || sanitizedPassword.length < 1) {
+  if (!rawPassword || rawPassword.length < 1 || rawPassword.length > 255) {
     return { valid: false, error: 'Password is required' };
   }
 
   return {
     valid: true,
     data: {
-      email: sanitizedEmail,
-      password: sanitizedPassword
+      email: trimmedEmail,
+      password: rawPassword
     }
   };
 };
@@ -158,13 +162,16 @@ const validateLoginCredentials = (email, password) => {
 const validateUserRegistration = (userData) => {
   const { email, realName, nickName, password, sitePassword } = userData;
 
-  const sanitizedEmail = sanitizeEmail(email);
+  // Email and passwords are kept verbatim (email is only trimmed) so that
+  // login — which also passes credentials through untransformed — matches
+  // what registration stored. Display names are still sanitized.
+  const sanitizedEmail = typeof email === 'string' ? email.trim() : '';
   const sanitizedRealName = sanitizeString(realName);
   const sanitizedNickName = sanitizeString(nickName);
-  const sanitizedPassword = sanitizeString(password);
-  const sanitizedSitePassword = sanitizeString(sitePassword);
+  const sanitizedPassword = typeof password === 'string' ? password : '';
+  const sanitizedSitePassword = typeof sitePassword === 'string' ? sitePassword : '';
 
-  if (!sanitizedEmail || sanitizedEmail.length < 1) {
+  if (!sanitizedEmail || sanitizedEmail.length < 1 || sanitizedEmail.length > 255) {
     return { valid: false, error: 'Email is required' };
   }
 
@@ -176,7 +183,7 @@ const validateUserRegistration = (userData) => {
     return { valid: false, error: 'Nickname is required' };
   }
 
-  if (!sanitizedPassword || sanitizedPassword.length < 1) {
+  if (!sanitizedPassword || sanitizedPassword.length < 1 || sanitizedPassword.length > 255) {
     return { valid: false, error: 'Password is required' };
   }
 

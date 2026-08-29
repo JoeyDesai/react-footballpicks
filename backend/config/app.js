@@ -21,7 +21,7 @@ const config = {
 
   // CORS Configuration
   cors: {
-    origins: 'https://footballpicks.jasetheace.com',
+    origins: ['https://footballpicks.jasetheace.com'],
     credentials: true
   },
 
@@ -66,7 +66,9 @@ const config = {
   // Application Settings
   app: {
     currentYear: 2026,
-    debug: false
+    debug: false,
+    sitePassword: 'cowboys',
+    adminEmails: ['jase@jasetheace.com']
   }
 };
 

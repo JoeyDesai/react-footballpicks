@@ -39,7 +39,7 @@ app.use((req, res, next) => {
   // Content Security Policy
   res.setHeader('Content-Security-Policy', 
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    "script-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data:; " +
     "font-src 'self'; " +
@@ -53,6 +53,18 @@ app.use((req, res, next) => {
   // Referrer Policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   
+  next();
+});
+
+// CSRF mitigation: state-changing requests from browsers carry an Origin
+// header; reject any that does not match the allowed CORS origins.
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const origin = req.headers.origin;
+    if (origin && !config.cors.origins.includes(origin)) {
+      return res.status(403).json({ success: false, error: 'Invalid request origin' });
+    }
+  }
   next();
 });
 
@@ -163,20 +175,28 @@ app.post('/api/login', async (req, res) => {
     const user = result.rows[0];
     // Use plain text password comparison
     const validPassword = sanitizedPassword === user.password;
-    
+
     if (!validPassword) {
       return res.json({ success: false, error: 'Invalid email or password' });
     }
 
-    req.session.userId = user.id;
-    res.json({
-      success: true,
-      user: sanitizeUserData({
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        realName: user.realname
-      })
+    // Regenerate the session on login to prevent session fixation
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error('Session regenerate error:', err);
+        return res.json({ success: false, error: 'Could not log in' });
+      }
+
+      req.session.userId = user.id;
+      res.json({
+        success: true,
+        user: sanitizeUserData({
+          id: user.id,
+          email: user.email,
+          nickname: user.nickname,
+          realName: user.realname
+        })
+      });
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -208,7 +228,7 @@ app.post('/api/create-account', async (req, res) => {
     const { email: sanitizedEmail, realName: sanitizedRealName, nickName: sanitizedNickName, password: sanitizedPassword, sitePassword: sanitizedSitePassword } = validation.data;
     
     // Simple site password check
-    if (sanitizedSitePassword !== 'cowboys') {
+    if (sanitizedSitePassword !== config.app.sitePassword) {
       return res.json({ success: false, error: 'Invalid site password' });
     }
 
@@ -237,7 +257,7 @@ app.post('/api/create-account', async (req, res) => {
       detail: error.detail,
       constraint: error.constraint
     });
-    res.json({ success: false, error: `Could not create account: ${error.message}` });
+    res.json({ success: false, error: 'Could not create account' });
   }
 });
 
@@ -246,13 +266,17 @@ app.get('/api/weeks', requireAuth, async (req, res) => {
   try {
     const currentYear = config.app.currentYear;
     
+    // A week is 'future' until it starts and 'completed' once the next week
+    // starts (or 7 days after its own start for the final week), so exactly
+    // one week can be current at a time.
     const result = await pool.query(`
-      SELECT id, number, startdate, 
+      SELECT id, number, startdate,
              startdate > NOW() as future,
-             startdate < NOW() as completed,
+             COALESCE(LEAD(startdate) OVER (ORDER BY startdate),
+                      startdate + INTERVAL '7 days') < NOW() as completed,
              factor
-      FROM weeks 
-      WHERE year = $1 
+      FROM weeks
+      WHERE year = $1
       ORDER BY startdate
     `, [currentYear]);
     
@@ -362,22 +386,39 @@ app.post('/api/picks/:weekId', requireAuth, async (req, res) => {
       return res.json({ success: false, error: validation.error });
     }
     
-    // Delete existing picks for this week
-    await pool.query(`
-      DELETE FROM picks 
-      WHERE picker = $1 AND game IN (SELECT id FROM games WHERE week = $2)
-    `, [userId, sanitizedWeekId]);
-    
-    // Insert new picks
-    for (const gameId of gameIds) {
-      const pick = picks[`GAME${gameId}`];
-      const value = picks[`VAL${gameId}`];
-      await pool.query(
-        'INSERT INTO picks (picker, game, guess, weight) VALUES ($1, $2, $3, $4)',
-        [userId, gameId, pick, value]
-      );
+    // Replace picks atomically: delete + insert in one transaction on a
+    // dedicated client so a failure or concurrent submit cannot leave the
+    // user with partial picks
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(`
+        DELETE FROM picks
+        WHERE picker = $1 AND game IN (SELECT id FROM games WHERE week = $2)
+      `, [userId, sanitizedWeekId]);
+
+      if (gameIds.length > 0) {
+        const params = [userId];
+        const rows = gameIds.map(gameId => {
+          const base = params.length;
+          params.push(gameId, picks[`GAME${gameId}`], picks[`VAL${gameId}`]);
+          return `($1, $${base + 1}, $${base + 2}, $${base + 3})`;
+        });
+        await client.query(
+          `INSERT INTO picks (picker, game, guess, weight) VALUES ${rows.join(', ')}`,
+          params
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-    
+
     res.json({ success: true, message: 'Picks saved successfully' });
   } catch (error) {
     console.error('Submit picks error:', error);
@@ -404,7 +445,7 @@ app.get('/api/overall-standings', requireAuth, async (req, res) => {
       FROM pickers u
       LEFT JOIN scores s ON u.id = s.picker
       LEFT JOIN weeks w ON s.week = w.id
-      WHERE u.active = 'y' AND (w.year = $1 OR w.year IS NULL)${tagFilter}
+      WHERE u.active = 'y' AND u.year = $1 AND (w.year = $1 OR w.year IS NULL)${tagFilter}
       GROUP BY u.id, u.nickname
       ORDER BY score DESC, numright DESC
     `, tag != 0 ? [currentYear, tag] : [currentYear]);
@@ -444,30 +485,31 @@ app.get('/api/overall-standings-detailed', requireAuth, async (req, res) => {
       FROM pickers u
       LEFT JOIN scores s ON u.id = s.picker
       LEFT JOIN weeks w ON s.week = w.id
-      WHERE u.active = 'y' AND (w.year = $1 OR w.year IS NULL)${tagFilter}
+      WHERE u.active = 'y' AND u.year = $1 AND (w.year = $1 OR w.year IS NULL)${tagFilter}
       GROUP BY u.id, u.nickname
       ORDER BY total_score DESC, total_correct DESC
     `, tag != 0 ? [currentYear, tag] : [currentYear]);
     
-    // Get weekly scores for each user (only from current year)
+    // Get weekly scores for all users in one query (only from current year)
+    const weeklyResult = await pool.query(`
+      SELECT s.picker, s.score, s.numright, w.number as week_number
+      FROM scores s
+      JOIN weeks w ON s.week = w.id
+      WHERE w.year = $1
+    `, [currentYear]);
+
     const weeklyScores = {};
-    for (const user of standingsResult.rows) {
-      const weeklyResult = await pool.query(`
-        SELECT s.week, s.score, s.numright, w.number as week_number
-        FROM scores s
-        JOIN weeks w ON s.week = w.id
-        WHERE s.picker = $1 AND w.year = $2
-        ORDER BY w.number DESC
-      `, [user.id, currentYear]);
-      
+    standingsResult.rows.forEach(user => {
       weeklyScores[user.id] = {};
-      weeklyResult.rows.forEach(row => {
-        weeklyScores[user.id][row.week_number] = {
+    });
+    weeklyResult.rows.forEach(row => {
+      if (weeklyScores[row.picker]) {
+        weeklyScores[row.picker][row.week_number] = {
           score: row.score,
           correct: row.numright
         };
-      });
-    }
+      }
+    });
     
     res.json({ 
       success: true, 
@@ -825,8 +867,8 @@ const requireAdmin = async (req, res, next) => {
     
     const userEmail = result.rows[0].email;
     console.log('Admin check - user email:', userEmail);
-    
-    if (userEmail !== 'jase@jasetheace.com' && userEmail !== 'joe' && userEmail !== 'your-email@example.com') {
+
+    if (!config.app.adminEmails.includes((userEmail || '').toLowerCase())) {
       console.log('Admin check failed: User is not admin');
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
@@ -924,49 +966,47 @@ app.post('/api/admin/user-picks/:userId/:weekId', requireAuth, requireAdmin, asy
     
     // Get games for this week
     const gamesResult = await pool.query('SELECT id FROM games WHERE week = $1', [weekId]);
-    
-    // Validate picks
+
+    // Validate picks using the same security utility as the user endpoint
     const gameIds = gamesResult.rows.map(g => g.id);
-    const usedValues = new Set();
-    const errors = [];
-    
-    gameIds.forEach(gameId => {
-      const pick = picks[`GAME${gameId}`];
-      const value = picks[`VAL${gameId}`];
-      
-      if (!pick) {
-        errors.push(`Missing pick for game ${gameId}`);
-      }
-      
-      if (!value || value === 0) {
-        errors.push(`Missing value for game ${gameId}`);
-      } else if (usedValues.has(value)) {
-        errors.push(`Value ${value} used multiple times`);
-      } else {
-        usedValues.add(value);
-      }
-    });
-    
-    if (errors.length > 0) {
-      return res.json({ success: false, error: errors.join('. ') });
+    const validation = validatePicksData(picks, gameIds);
+
+    if (!validation.valid) {
+      return res.json({ success: false, error: validation.error });
     }
-    
-    // Delete existing picks for this week
-    await pool.query(`
-      DELETE FROM picks 
-      WHERE picker = $1 AND game IN (SELECT id FROM games WHERE week = $2)
-    `, [userId, weekId]);
-    
-    // Insert new picks
-    for (const gameId of gameIds) {
-      const pick = picks[`GAME${gameId}`];
-      const value = picks[`VAL${gameId}`];
-      await pool.query(
-        'INSERT INTO picks (picker, game, guess, weight) VALUES ($1, $2, $3, $4)',
-        [userId, gameId, pick, value]
-      );
+
+    // Replace picks atomically: delete + insert in one transaction on a
+    // dedicated client so a failure cannot leave the user with partial picks
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(`
+        DELETE FROM picks
+        WHERE picker = $1 AND game IN (SELECT id FROM games WHERE week = $2)
+      `, [userId, weekId]);
+
+      if (gameIds.length > 0) {
+        const params = [userId];
+        const rows = gameIds.map(gameId => {
+          const base = params.length;
+          params.push(gameId, picks[`GAME${gameId}`], picks[`VAL${gameId}`]);
+          return `($1, $${base + 1}, $${base + 2}, $${base + 3})`;
+        });
+        await client.query(
+          `INSERT INTO picks (picker, game, guess, weight) VALUES ${rows.join(', ')}`,
+          params
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-    
+
     res.json({ success: true, message: 'Picks saved successfully' });
   } catch (error) {
     console.error('Submit admin picks error:', error);
@@ -978,7 +1018,7 @@ app.post('/api/admin/user-picks/:userId/:weekId', requireAuth, requireAdmin, asy
 app.post('/api/admin/run-script', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { scriptType } = req.body;
-    const { exec } = require('child_process');
+    const { execFile } = require('child_process');
     
     // Get script path from config
     const scriptPath = config.getScriptPath(scriptType);
@@ -989,46 +1029,37 @@ app.post('/api/admin/run-script', requireAuth, requireAdmin, async (req, res) =>
     const absoluteScriptPath = path.resolve(__dirname, scriptPath);
     if (!fs.existsSync(absoluteScriptPath)) {
       console.error('Script file does not exist:', absoluteScriptPath);
-      return res.json({ success: false, error: `Script file not found: ${absoluteScriptPath}` });
+      return res.json({ success: false, error: 'Script file not found' });
     }
-    
+
     // Execute the PHP script (original files use $CurYear variable)
-    // Quote the path to handle spaces in directory names
+    // Use execFile (no shell) to avoid any shell interpretation of the path
     // Execute from DB Updates directory so relative paths work correctly
     const dbUpdatesDir = path.join(__dirname, 'DB Updates');
-    exec(`php "${absoluteScriptPath}"`, { cwd: dbUpdatesDir }, (error, stdout, stderr) => {
+    execFile('php', [absoluteScriptPath], { cwd: dbUpdatesDir }, (error, stdout, stderr) => {
       console.log('Script stdout:', stdout);
       console.log('Script stderr:', stderr);
-      
+
       if (error) {
         console.error('Script execution error:', error);
-        return res.json({ 
-          success: false, 
-          error: `Script execution failed: ${error.message}`,
-          stdout: stdout,
-          stderr: stderr
-        });
+        return res.json({ success: false, error: 'Script execution failed' });
       }
-      
+
       if (stderr) {
         console.error('Script stderr:', stderr);
-        return res.json({ 
-          success: false, 
-          error: `Script error: ${stderr}`,
-          stdout: stdout
-        });
+        return res.json({ success: false, error: 'Script execution failed' });
       }
-      
-      res.json({ 
-        success: true, 
+
+      res.json({
+        success: true,
         message: `${scriptType} script executed successfully`,
         output: stdout
       });
     });
-    
+
   } catch (error) {
     console.error('Run script error:', error);
-    res.json({ success: false, error: `Could not run script: ${error.message}` });
+    res.json({ success: false, error: 'Could not run script' });
   }
 });
 
@@ -1073,31 +1104,36 @@ app.post('/api/admin/user-tags/:userId', requireAuth, requireAdmin, async (req, 
     const { userId } = req.params;
     const { tagIds } = req.body;
     
-    // Start transaction
-    await pool.query('BEGIN');
-    
+    // Run the transaction on a dedicated client - transactions on the shared
+    // pool are not safe because each query may use a different connection
+    const client = await pool.connect();
     try {
+      await client.query('BEGIN');
+
       // Remove all existing tags for this user
-      await pool.query('DELETE FROM pickertags WHERE pickerid = $1', [userId]);
-      
+      await client.query('DELETE FROM pickertags WHERE pickerid = $1', [userId]);
+
       // Add new tags
       if (tagIds && tagIds.length > 0) {
-        for (const tagId of tagIds) {
-          await pool.query(
-            'INSERT INTO pickertags (pickerid, tagid) VALUES ($1, $2)',
-            [userId, tagId]
-          );
-        }
+        const params = [userId];
+        const rows = tagIds.map(tagId => {
+          params.push(tagId);
+          return `($1, $${params.length})`;
+        });
+        await client.query(
+          `INSERT INTO pickertags (pickerid, tagid) VALUES ${rows.join(', ')}`,
+          params
+        );
       }
-      
-      // Commit transaction
-      await pool.query('COMMIT');
-      
+
+      await client.query('COMMIT');
+
       res.json({ success: true, message: 'User tags updated successfully' });
     } catch (error) {
-      // Rollback on error
-      await pool.query('ROLLBACK');
+      await client.query('ROLLBACK');
       throw error;
+    } finally {
+      client.release();
     }
   } catch (error) {
     console.error('Update user tags error:', error);

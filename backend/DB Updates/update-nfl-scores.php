@@ -83,11 +83,16 @@ foreach($data->context->dispatcher->stores->GamesStore->games as $game => $val) 
     $Time = "";
   }
   
+  #  These values come from the external API and are interpolated into SQL
+  #  below, so constrain them: scores must be integers and $Time is limited
+  #  to the characters the formats above can produce
+  $Time = preg_replace('/[^A-Za-z0-9\/: .]/', '', $Time);
+
   dprint ("Time = $Time");
   $Home = $teams[$val->home_team_id];
-  $HomeScore = $val->total_home_points;
+  $HomeScore = intval($val->total_home_points);
   $Away = $teams[$val->away_team_id];
-  $AwayScore = $val->total_away_points;
+  $AwayScore = intval($val->total_away_points);
 
   if (!preg_match("/^[A-Z]{2,3}$/", $Home)) {
     print "Invalid Home team!";
