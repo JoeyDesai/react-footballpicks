@@ -326,7 +326,7 @@ $dbhost = 'localhost';
 $dbport = '5432';
 
 // Update current year if needed
-$CurYear = 2025;
+$CurYear = 2026;
 ```
 
 **Important**: For production deployment, you must update these values in the `backend/config/database.php` file:

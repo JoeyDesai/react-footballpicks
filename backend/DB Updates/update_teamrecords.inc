@@ -3,7 +3,7 @@
 echo "DEBUG: Team Records script started at " . date('Y-m-d H:i:s') . "\n";
 
 # Include database setup
-$CurYear = 2025;
+$CurYear = 2026;
 require_once '../sql.inc';
 
 #  Loop through each team, updating records as needed

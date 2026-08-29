@@ -4,7 +4,7 @@
 echo "DEBUG: Individual Records script started at " . date('Y-m-d H:i:s') . "\n";
 
 # Include database setup
-$CurYear = 2025;
+$CurYear = 2026;
 require_once '../sql.inc';
 
 #  Delete any existing data for this year
