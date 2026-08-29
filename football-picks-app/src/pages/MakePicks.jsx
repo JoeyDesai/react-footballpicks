@@ -161,14 +161,16 @@ function MakePicks() {
         setWeeks(response.data.weeks);
         // Auto-select next week to make picks for (same strategy as weekly standings but +1)
         const completedWeeks = response.data.weeks.filter(w => w.completed);
-        const currentWeek = completedWeeks[completedWeeks.length - 1] || response.data.weeks[0];
-        
-        // Find the next week after the current week
-        const currentIndex = response.data.weeks.findIndex(w => w.id === currentWeek.id);
-        const nextWeek = response.data.weeks[currentIndex + 1];
-        
-        // Select the next week if it exists, otherwise fall back to current week
-        setSelectedWeek(nextWeek || currentWeek);
+        const currentWeek = completedWeeks[completedWeeks.length - 1];
+
+        if (currentWeek) {
+          // Find the next week after the last started week
+          const currentIndex = response.data.weeks.findIndex(w => w.id === currentWeek.id);
+          setSelectedWeek(response.data.weeks[currentIndex + 1] || currentWeek);
+        } else {
+          // No week has started yet (pre-season): pick the first week
+          setSelectedWeek(response.data.weeks[0]);
+        }
       }
     } catch (error) {
       setError('Failed to load weeks');
@@ -1270,10 +1272,10 @@ function MakePicks() {
                 options={(() => {
                   // Calculate auto-selected week once outside the map
                   const completedWeeks = weeks.filter(w => w.completed);
-                  const currentWeek = completedWeeks[completedWeeks.length - 1] || weeks[0];
-                  const currentIndex = weeks.findIndex(w => w.id === currentWeek.id);
-                  const nextWeek = weeks[currentIndex + 1];
-                  const autoSelectedWeek = nextWeek || currentWeek;
+                  const currentWeek = completedWeeks[completedWeeks.length - 1];
+                  const currentIndex = currentWeek ? weeks.findIndex(w => w.id === currentWeek.id) : -1;
+                  // Pre-season (no started week): index -1 + 1 = weeks[0]
+                  const autoSelectedWeek = weeks[currentIndex + 1] || currentWeek;
                   
                   return weeks.map(week => {
                     const isAutoSelected = week.id === autoSelectedWeek?.id;

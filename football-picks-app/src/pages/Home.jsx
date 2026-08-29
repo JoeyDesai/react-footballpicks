@@ -203,13 +203,11 @@ function Home() {
         // Find the next week for making picks
         const weeks = weeksResponse.data.weeks;
         const completedWeeks = weeks.filter(w => w.completed);
-        const currentWeek = completedWeeks[completedWeeks.length - 1] || weeks[0];
-        
-        // Find the next week after the current week
-        const currentIndex = weeks.findIndex(w => w.id === currentWeek.id);
-        const nextWeek = weeks[currentIndex + 1];
-        
-        setNextWeek(nextWeek || currentWeek);
+        const currentWeek = completedWeeks[completedWeeks.length - 1];
+
+        // Week after the last started week; pre-season (index -1 + 1) gives weeks[0]
+        const currentIndex = currentWeek ? weeks.findIndex(w => w.id === currentWeek.id) : -1;
+        setNextWeek(weeks[currentIndex + 1] || currentWeek);
       }
     } catch (error) {
       console.error('Error loading home data:', error);
