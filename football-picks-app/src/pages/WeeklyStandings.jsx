@@ -65,15 +65,25 @@ function WeeklyStandings() {
         newScreenSize = 'desktop';
       }
       setScreenSize(newScreenSize);
-      
+
       // Update view mode based on screen size
       const isMobile = width <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       const newViewMode = isMobile ? 'quick' : 'full';
       setViewMode(newViewMode);
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    // Debounce resize events so we don't thrash state (and refetches) mid-drag
+    let resizeTimer;
+    const debouncedResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(handleResize, 150);
+    };
+
+    window.addEventListener('resize', debouncedResize);
+    return () => {
+      clearTimeout(resizeTimer);
+      window.removeEventListener('resize', debouncedResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -82,22 +92,22 @@ function WeeklyStandings() {
     }
   }, [selectedWeek, selectedTag, viewMode]);
 
-  // Auto refresh effect
+  // Auto refresh effect - refetch standings in place instead of reloading the page
   useEffect(() => {
     let interval;
-    
-    if (autoRefresh) {
+
+    if (autoRefresh && selectedWeek) {
       interval = setInterval(() => {
-        window.location.reload();
+        loadStandings(true);
       }, 60000); // 60 seconds
     }
-    
+
     return () => {
       if (interval) {
         clearInterval(interval);
       }
     };
-  }, [autoRefresh]);
+  }, [autoRefresh, selectedWeek, selectedTag, viewMode]);
 
   const loadUserTags = async () => {
     try {
@@ -126,68 +136,56 @@ function WeeklyStandings() {
     }
   };
 
-  // Load standings data based on selected week and view mode
-  const loadStandings = async () => {
+  // Load standings data based on selected week and view mode.
+  // Pass background=true to refresh data without showing the loading spinner.
+  const loadStandings = async (background = false) => {
     try {
-      setLoading(true);
-      if (viewMode === 'quick') {
-        const response = await statsAPI.getWeeklyStandings(selectedWeek.id, selectedTag);
-        if (response.data.success) {
-          // For quick view, we need to get the full data to calculate potential correctly
-          const fullResponse = await statsAPI.getWeeklyStandingsClassic(selectedWeek.id, selectedTag);
-          if (fullResponse.data.success) {
-            // Use the new potential score calculation from backend
-            const standingsWithPotential = fullResponse.data.standings.map(player => ({
-              ...player,
-              potential_score: player.new_potential_score || player.score,
-              potential_correct: player.new_potential_correct || player.numright
-            }));
-            
-            // Sort by potential score
-            const sortedStandings = standingsWithPotential.sort((a, b) => {
-              const aPotential = a.potential_score || a.score;
-              const bPotential = b.potential_score || b.score;
-              if (bPotential !== aPotential) {
-                return bPotential - aPotential;
-              }
-              return b.score - a.score;
-            });
-            
-            setStandings(sortedStandings);
-            setFullData(fullResponse.data);
-          } else {
+      if (!background) {
+        setLoading(true);
+      }
+      try {
+        // Both views use the classic endpoint so potential scores are correct
+        const response = await statsAPI.getWeeklyStandingsClassic(selectedWeek.id, selectedTag);
+        if (!response.data.success) {
+          throw new Error('Classic standings request failed');
+        }
+        // Use the new potential score calculation from backend
+        const standingsWithPotential = response.data.standings.map(player => ({
+          ...player,
+          potential_score: player.new_potential_score || player.score,
+          potential_correct: player.new_potential_correct || player.numright
+        }));
+
+        // Sort by potential score instead of current score
+        const sortedStandings = standingsWithPotential.sort((a, b) => {
+          const aPotential = a.potential_score || a.score;
+          const bPotential = b.potential_score || b.score;
+          if (bPotential !== aPotential) {
+            return bPotential - aPotential;
+          }
+          // If potential scores are equal, sort by current score
+          return b.score - a.score;
+        });
+        setStandings(sortedStandings);
+        setFullData(response.data);
+      } catch (classicError) {
+        // Fall back to the summary endpoint for quick view if classic fails
+        if (viewMode === 'quick') {
+          const response = await statsAPI.getWeeklyStandings(selectedWeek.id, selectedTag);
+          if (response.data.success) {
             setStandings(response.data.standings);
             setFullData(null);
           }
-        }
-      } else {
-        const response = await statsAPI.getWeeklyStandingsClassic(selectedWeek.id, selectedTag);
-        if (response.data.success) {
-            // Use the new potential score calculation from backend
-            const standingsWithPotential = response.data.standings.map(player => ({
-              ...player,
-              potential_score: player.new_potential_score || player.score,
-              potential_correct: player.new_potential_correct || player.numright
-            }));
-          
-          // Sort by potential score instead of current score
-          const sortedStandings = standingsWithPotential.sort((a, b) => {
-            const aPotential = a.potential_score || a.score;
-            const bPotential = b.potential_score || b.score;
-            if (bPotential !== aPotential) {
-              return bPotential - aPotential;
-            }
-            // If potential scores are equal, sort by current score
-            return b.score - a.score;
-          });
-          setStandings(sortedStandings);
-          setFullData(response.data);
+        } else {
+          throw classicError;
         }
       }
     } catch (error) {
       console.error('Error loading standings:', error);
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   };
 
@@ -241,17 +239,17 @@ function WeeklyStandings() {
               <div className="div-header-cell player-header">Player</div>
               {games.map(game => (
                 <div key={game.id} className="div-header-cell game-header">
-                  <div className="game-info">
-                    <div className="game-teams">
-                      <div className="away-team">{game.away_abbr}-</div>
-                      <div className="away-score">{game.awayscore || '-'}</div>
+                  <div className="scoreboard-info">
+                    <div className="scoreboard-teams">
+                      <div className="scoreboard-team">{game.away_abbr}-</div>
+                      <div className="scoreboard-score">{game.awayscore ?? '-'}</div>
                     </div>
-                    <div className="game-teams">
-                      <div className="home-team">{game.home_abbr}-</div>
-                      <div className="home-score">{game.homescore || '-'}</div>
+                    <div className="scoreboard-teams">
+                      <div className="scoreboard-team">{game.home_abbr}-</div>
+                      <div className="scoreboard-score">{game.homescore ?? '-'}</div>
                     </div>
-                    <div className="game-status">
-                      {game.winner ? 'Final' : (game.time || 'TBD')}
+                    <div className="scoreboard-status">
+                      {game.winner != null ? 'Final' : (game.time || 'TBD')}
                     </div>
                   </div>
                 </div>
@@ -295,9 +293,11 @@ function WeeklyStandings() {
 
                 const isAwayPick = gamePick.guess === gamePick.away;
                 const isHomePick = gamePick.guess === gamePick.home;
-                const isCorrect = gamePick.winner && gamePick.guess === gamePick.winner;
-                const isWrong = gamePick.winner && gamePick.guess !== gamePick.winner;
-                const isPending = !gamePick.winner;
+                // winner is null while pending; 0 means the game ended in a tie
+                const isTie = gamePick.winner === 0;
+                const isCorrect = gamePick.winner != null && !isTie && gamePick.guess === gamePick.winner;
+                const isWrong = gamePick.winner != null && !isTie && gamePick.guess !== gamePick.winner;
+                const isPending = gamePick.winner == null;
                 
                 const pickedTeam = isAwayPick ? game.away_abbr : game.home_abbr;
                 const pickWeight = gamePick.weight;
@@ -458,17 +458,17 @@ function WeeklyStandings() {
               <div className="div-header-cell player-header">Player</div>
               {games.map(game => (
                 <div key={game.id} className="div-header-cell game-header">
-                  <div className="game-info">
-                    <div className="game-teams">
-                      <div className="away-team">{game.away_abbr}-</div>
-                      <div className="away-score">{game.awayscore || '-'}</div>
+                  <div className="scoreboard-info">
+                    <div className="scoreboard-teams">
+                      <div className="scoreboard-team">{game.away_abbr}-</div>
+                      <div className="scoreboard-score">{game.awayscore ?? '-'}</div>
                     </div>
-                    <div className="game-teams">
-                      <div className="home-team">{game.home_abbr}-</div>
-                      <div className="home-score">{game.homescore || '-'}</div>
+                    <div className="scoreboard-teams">
+                      <div className="scoreboard-team">{game.home_abbr}-</div>
+                      <div className="scoreboard-score">{game.homescore ?? '-'}</div>
                     </div>
-                    <div className="game-status">
-                      {game.winner ? 'Final' : (game.time || 'TBD')}
+                    <div className="scoreboard-status">
+                      {game.winner != null ? 'Final' : (game.time || 'TBD')}
                     </div>
                   </div>
                 </div>
@@ -512,9 +512,11 @@ function WeeklyStandings() {
 
                   const isAwayPick = gamePick.guess === gamePick.away;
                   const isHomePick = gamePick.guess === gamePick.home;
-                  const isCorrect = gamePick.winner && gamePick.guess === gamePick.winner;
-                  const isWrong = gamePick.winner && gamePick.guess !== gamePick.winner;
-                  const isPending = !gamePick.winner;
+                  // winner is null while pending; 0 means the game ended in a tie
+                  const isTie = gamePick.winner === 0;
+                  const isCorrect = gamePick.winner != null && !isTie && gamePick.guess === gamePick.winner;
+                  const isWrong = gamePick.winner != null && !isTie && gamePick.guess !== gamePick.winner;
+                  const isPending = gamePick.winner == null;
                   
                   const pickedTeam = isAwayPick ? game.away_abbr : game.home_abbr;
                   const pickWeight = gamePick.weight;
@@ -622,17 +624,17 @@ function WeeklyStandings() {
               <div className="div-header-cell player-header">Player</div>
               {games.map(game => (
                 <div key={game.id} className="div-header-cell game-header">
-                  <div className="game-info">
-                    <div className="game-teams">
-                      <div className="away-team">{game.away_abbr}-</div>
-                      <div className="away-score">{game.awayscore || '-'}</div>
+                  <div className="scoreboard-info">
+                    <div className="scoreboard-teams">
+                      <div className="scoreboard-team">{game.away_abbr}-</div>
+                      <div className="scoreboard-score">{game.awayscore ?? '-'}</div>
                     </div>
-                    <div className="game-teams">
-                      <div className="home-team">{game.home_abbr}-</div>
-                      <div className="home-score">{game.homescore || '-'}</div>
+                    <div className="scoreboard-teams">
+                      <div className="scoreboard-team">{game.home_abbr}-</div>
+                      <div className="scoreboard-score">{game.homescore ?? '-'}</div>
                     </div>
-                    <div className="game-status">
-                      {game.winner ? 'Final' : (game.time || 'TBD')}
+                    <div className="scoreboard-status">
+                      {game.winner != null ? 'Final' : (game.time || 'TBD')}
                     </div>
                   </div>
                 </div>
@@ -676,9 +678,11 @@ function WeeklyStandings() {
 
                   const isAwayPick = gamePick.guess === gamePick.away;
                   const isHomePick = gamePick.guess === gamePick.home;
-                  const isCorrect = gamePick.winner && gamePick.guess === gamePick.winner;
-                  const isWrong = gamePick.winner && gamePick.guess !== gamePick.winner;
-                  const isPending = !gamePick.winner;
+                  // winner is null while pending; 0 means the game ended in a tie
+                  const isTie = gamePick.winner === 0;
+                  const isCorrect = gamePick.winner != null && !isTie && gamePick.guess === gamePick.winner;
+                  const isWrong = gamePick.winner != null && !isTie && gamePick.guess !== gamePick.winner;
+                  const isPending = gamePick.winner == null;
                   
                   const pickedTeam = isAwayPick ? game.away_abbr : game.home_abbr;
                   const pickWeight = gamePick.weight;
@@ -956,13 +960,14 @@ function WeeklyStandings() {
         .slider-track {
           position: relative;
           background: rgba(255, 255, 255, 0.08);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.15);
           border-radius: 12px;
           height: 40px;
           width: 100%;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
           box-shadow: 
             0 4px 16px rgba(0, 0, 0, 0.1),
             inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -986,7 +991,7 @@ function WeeklyStandings() {
           border: 1px solid rgba(100, 150, 255, 0.4);
           border-radius: 10px;
           cursor: pointer;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1052,13 +1057,14 @@ function WeeklyStandings() {
 
         .auto-refresh-button {
           background: rgba(255, 255, 255, 0.08);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.15);
           color: rgba(255, 255, 255, 0.7);
           padding: 0.6rem 0.875rem;
           border-radius: 12px;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
           font-size: 0.9rem;
           font-weight: 500;
           width: 180px;
@@ -1121,6 +1127,7 @@ function WeeklyStandings() {
         /* Desktop Layout Styles */
         .desktop-table-container {
           background: rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
@@ -1136,6 +1143,7 @@ function WeeklyStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -1152,6 +1160,7 @@ function WeeklyStandings() {
         .mobile-header-container {
           width: 100%;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           position: sticky;
           top: 0;
@@ -1204,6 +1213,7 @@ function WeeklyStandings() {
         /* Tablet Layout Styles */
         .tablet-table-container {
           background: rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
@@ -1233,6 +1243,7 @@ function WeeklyStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -1246,6 +1257,7 @@ function WeeklyStandings() {
         /* Mobile Layout Styles */
         .mobile-table-container {
           background: rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
@@ -1261,6 +1273,7 @@ function WeeklyStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -1295,7 +1308,7 @@ function WeeklyStandings() {
         .div-scroll-container::-webkit-scrollbar-thumb {
           background: rgba(200, 200, 200, 0.4);
           border-radius: 3px;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
         }
 
         .div-scroll-container::-webkit-scrollbar-thumb:hover {
@@ -1315,6 +1328,7 @@ function WeeklyStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -1345,6 +1359,8 @@ function WeeklyStandings() {
         .div-body-row {
           display: grid;
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          transition: background-color 0.2s ease;
+          cursor: pointer;
           min-width: 0;
           width: 100%;
           position: relative;
@@ -1409,14 +1425,15 @@ function WeeklyStandings() {
           min-width: 35px;
         }
 
-        .game-info {
+        /* Scoreboard cells - namespaced to avoid colliding with App.css .game-info */
+        .scoreboard-info {
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 0.25rem;
         }
 
-        .game-teams {
+        .scoreboard-teams {
           display: flex;
           align-items: center;
           gap: 0.05rem;
@@ -1425,25 +1442,16 @@ function WeeklyStandings() {
           font-size: 0.6rem;
         }
 
-        .away-team {
+        .scoreboard-team {
           color: rgba(150, 200, 255, 1);
         }
 
-        .home-team {
-          color: rgba(150, 200, 255, 1);
-        }
-
-        .away-score {
+        .scoreboard-score {
           color: rgba(150, 200, 255, 1);
           font-weight: 700;
         }
 
-        .home-score {
-          color: rgba(150, 200, 255, 1);
-          font-weight: 700;
-        }
-
-        .game-status {
+        .scoreboard-status {
           font-size: 0.5rem;
           color: rgba(255, 255, 255, 0.6);
           font-weight: 500;
@@ -1535,8 +1543,12 @@ function WeeklyStandings() {
 
         .no-data {
           text-align: center;
-          padding: 3rem;
+          padding: 3rem 2rem;
           color: rgba(255, 255, 255, 0.6);
+        }
+
+        .no-data p {
+          margin-bottom: 0.5rem;
         }
 
         /* Responsive adjustments */
@@ -1637,25 +1649,19 @@ function WeeklyStandings() {
             min-height: 24px !important;
           }
 
+          .mobile-layout .scoreboard-teams {
+            font-size: 0.5rem;
+          }
+
+          .mobile-layout .scoreboard-status {
+            font-size: 0.4rem;
+          }
+
           /* Mobile pick display boxes - smaller */
           .mobile-layout .pick-display {
-            padding: 0.05rem 0.1rem;
-            min-height: 0.8rem;
-            font-size: 0.5rem;
-          }
-        }
-
-          .mobile-layout .game-teams {
-            font-size: 0.5rem;
-          }
-
-          .mobile-layout .game-status {
-            font-size: 0.4rem;
-          }
-
-          .mobile-layout .pick-display {
-            font-size: 0.4rem;
             padding: 0.03rem 0.05rem;
+            min-height: 0.8rem;
+            font-size: 0.4rem;
           }
 
           .mobile-layout .total-score,

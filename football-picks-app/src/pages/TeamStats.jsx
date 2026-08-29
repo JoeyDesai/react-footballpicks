@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart3 } from 'lucide-react';
 import { statsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,16 +13,29 @@ function TeamStats() {
   const [sortBy, setSortBy] = useState('pointswon');
   const [sortOrder, setSortOrder] = useState('desc');
 
+  // Guard against the header and body scroll handlers re-triggering each other
+  const isSyncingScroll = useRef(false);
+
   const handleBodyScroll = (e) => {
+    if (isSyncingScroll.current) {
+      isSyncingScroll.current = false;
+      return;
+    }
     const headerContainer = document.querySelector('.table-header-container');
-    if (headerContainer) {
+    if (headerContainer && headerContainer.scrollLeft !== e.target.scrollLeft) {
+      isSyncingScroll.current = true;
       headerContainer.scrollLeft = e.target.scrollLeft;
     }
   };
 
   const handleHeaderScroll = (e) => {
+    if (isSyncingScroll.current) {
+      isSyncingScroll.current = false;
+      return;
+    }
     const tableBody = document.querySelector('.table-body');
-    if (tableBody) {
+    if (tableBody && tableBody.scrollLeft !== e.target.scrollLeft) {
+      isSyncingScroll.current = true;
       tableBody.scrollLeft = e.target.scrollLeft;
     }
   };
@@ -105,10 +118,10 @@ function TeamStats() {
     }
   };
 
-  const sortedStats = [...teamStats].sort((a, b) => {
+  const sortedStats = useMemo(() => [...teamStats].sort((a, b) => {
     let aVal = a[sortBy];
     let bVal = b[sortBy];
-    
+
     // Handle string vs number sorting
     if (sortBy === 'name') {
       // String sorting for team names
@@ -119,16 +132,16 @@ function TeamStats() {
       aVal = parseFloat(aVal) || 0;
       bVal = parseFloat(bVal) || 0;
     }
-    
+
     let result;
     if (sortOrder === 'asc') {
       result = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
     } else {
       result = aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
     }
-    
+
     return result;
-  });
+  }), [teamStats, sortBy, sortOrder]);
 
   const getSortIcon = (column) => {
     return null; // We'll use CSS pseudo-element instead
@@ -408,6 +421,7 @@ function TeamStats() {
 
         .table-container {
           background: rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
@@ -417,6 +431,7 @@ function TeamStats() {
 
         .table-header-container {
           background: rgba(255, 255, 255, 0.1);
+          -webkit-backdrop-filter: blur(10px);
           backdrop-filter: blur(10px);
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           overflow-x: auto;
@@ -469,7 +484,7 @@ function TeamStats() {
         .sortable-header {
           cursor: pointer;
           user-select: none;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -531,7 +546,7 @@ function TeamStats() {
         .table-body::-webkit-scrollbar-thumb {
           background: rgba(200, 200, 200, 0.4);
           border-radius: 3px;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
         }
 
         .table-body::-webkit-scrollbar-thumb:hover {
@@ -643,7 +658,7 @@ function TeamStats() {
 
         .no-data {
           text-align: center;
-          padding: 4rem 2rem;
+          padding: 3rem 2rem;
           color: rgba(255, 255, 255, 0.6);
         }
 

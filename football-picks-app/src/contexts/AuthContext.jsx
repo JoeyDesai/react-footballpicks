@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { authAPI } from '../services/api';
 import { sanitizeUserData } from '../utils/sanitize';
 import { isAdminUser, getNetworkErrorMessage } from '../config';
@@ -60,10 +60,10 @@ export function AuthProvider({ children }) {
    * @param {string} password - User's password
    * @returns {Object} Result object with success boolean and optional error message
    */
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     try {
       const response = await authAPI.login(email, password);
-      
+
       if (response.data && response.data.success) {
         setUser(sanitizeUserData(response.data.user));
         return { success: true };
@@ -77,13 +77,13 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: getNetworkErrorMessage() };
     }
-  };
+  }, []);
 
   /**
    * Logs out the current user by clearing the session and user state
    * Always clears user state even if backend logout fails
    */
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await authAPI.logout();
     } catch (error) {
@@ -91,14 +91,14 @@ export function AuthProvider({ children }) {
     } finally {
       setUser(null);
     }
-  };
+  }, []);
 
   /**
    * Creates a new user account
    * @param {Object} userData - User registration data (email, password, etc.)
    * @returns {Object} Result object with success boolean and optional error message
    */
-  const createAccount = async (userData) => {
+  const createAccount = useCallback(async (userData) => {
     try {
       const response = await authAPI.createAccount(userData);
       if (response.data && response.data.success) {
@@ -113,20 +113,21 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: getNetworkErrorMessage() };
     }
-  };
+  }, []);
 
   // Check if current user has admin privileges based on email
   const isAdmin = user && isAdminUser(user.email);
 
   // Context value object containing all authentication state and methods
-  const value = {
+  // Memoized so consumers only re-render when auth state actually changes
+  const value = useMemo(() => ({
     user,           // Current authenticated user object (null if not logged in)
     login,          // Function to authenticate user with email/password
     logout,         // Function to log out current user
     createAccount,  // Function to create new user account
     loading,        // Boolean indicating if auth status is being checked
     isAdmin         // Boolean indicating if current user has admin privileges
-  };
+  }), [user, login, logout, createAccount, loading, isAdmin]);
 
   return (
     <AuthContext.Provider value={value}>

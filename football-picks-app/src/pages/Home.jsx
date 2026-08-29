@@ -15,6 +15,7 @@ function Home() {
   const [currentWeek, setCurrentWeek] = useState(null);
   const [nextWeek, setNextWeek] = useState(null);
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0 });
+  const [firstGameTime, setFirstGameTime] = useState(null);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showInstallApp, setShowInstallApp] = useState(false);
 
@@ -23,110 +24,83 @@ function Home() {
     loadHomeData();
   }, []);
 
-  // Countdown timer to first game of next week
+  // Fallback kickoff time: next Thursday at 8pm
+  const getNextThursdayKickoff = () => {
+    const now = new Date();
+    const nextThursday = new Date();
+    const daysUntilThursday = (4 - now.getDay() + 7) % 7;
+    nextThursday.setDate(now.getDate() + (daysUntilThursday === 0 ? 7 : daysUntilThursday));
+    nextThursday.setHours(20, 0, 0, 0);
+    return nextThursday;
+  };
+
+  // Fetch next week's games once to find the first kickoff time
   useEffect(() => {
-    const updateCountdown = async () => {
+    if (!nextWeek) return;
+
+    let cancelled = false;
+    const loadFirstGameTime = async () => {
       try {
-        // Get the next week's games to find the first game time
-        if (nextWeek) {
-          const gamesResponse = await gameAPI.getGames(nextWeek.id);
-          
-          if (gamesResponse.data.success && gamesResponse.data.games.length > 0) {
-            // Find the earliest game time
-            const games = gamesResponse.data.games;
-            const now = new Date();
-            let earliestGameTime = null;
-            
-            // Find the first game that hasn't started yet
-            for (const game of games) {
-              if (game.date) {
-                const gameTime = new Date(game.date);
-                if (gameTime > now && (!earliestGameTime || gameTime < earliestGameTime)) {
-                  earliestGameTime = gameTime;
-                }
-              }
-            }
-            
-            if (earliestGameTime) {
-              const timeDiff = earliestGameTime.getTime() - now.getTime();
-              
-              console.log('Countdown update:', { now, earliestGameTime, timeDiff });
-              
-              if (timeDiff > 0) {
-                const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-                
-                console.log('Setting countdown:', { days, hours, minutes });
-                setCountdown({ days, hours, minutes });
-              } else {
-                setCountdown({ days: 0, hours: 0, minutes: 0 });
-              }
-            } else {
-              // No upcoming games found, fallback to next Thursday at 8pm
-              const nextThursday = new Date();
-              const daysUntilThursday = (4 - now.getDay() + 7) % 7;
-              nextThursday.setDate(now.getDate() + (daysUntilThursday === 0 ? 7 : daysUntilThursday));
-              nextThursday.setHours(20, 0, 0, 0);
-              
-              const timeDiff = nextThursday.getTime() - now.getTime();
-              if (timeDiff > 0) {
-                const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-                setCountdown({ days, hours, minutes });
-              } else {
-                setCountdown({ days: 0, hours: 0, minutes: 0 });
-              }
-            }
-          } else {
-            // No games available, fallback to next Thursday at 8pm
-            const now = new Date();
-            const nextThursday = new Date();
-            const daysUntilThursday = (4 - now.getDay() + 7) % 7;
-            nextThursday.setDate(now.getDate() + (daysUntilThursday === 0 ? 7 : daysUntilThursday));
-            nextThursday.setHours(20, 0, 0, 0);
-            
-            const timeDiff = nextThursday.getTime() - now.getTime();
-            if (timeDiff > 0) {
-              const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-              const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-              const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-              setCountdown({ days, hours, minutes });
-            } else {
-              setCountdown({ days: 0, hours: 0, minutes: 0 });
+        const gamesResponse = await gameAPI.getGames(nextWeek.id);
+        const games = (gamesResponse.data.success && gamesResponse.data.games) || [];
+        const now = new Date();
+        let earliestGameTime = null;
+
+        // Find the first game that hasn't started yet
+        for (const game of games) {
+          if (game.date) {
+            const gameTime = new Date(game.date);
+            if (gameTime > now && (!earliestGameTime || gameTime < earliestGameTime)) {
+              earliestGameTime = gameTime;
             }
           }
         }
+
+        if (!cancelled) {
+          setFirstGameTime(earliestGameTime || getNextThursdayKickoff());
+        }
       } catch (error) {
-        console.error('Error updating countdown:', error);
-        // Fallback to next Thursday at 8pm on error
-        const now = new Date();
-        const nextThursday = new Date();
-        const daysUntilThursday = (4 - now.getDay() + 7) % 7;
-        nextThursday.setDate(now.getDate() + (daysUntilThursday === 0 ? 7 : daysUntilThursday));
-        nextThursday.setHours(20, 0, 0, 0);
-        
-        const timeDiff = nextThursday.getTime() - now.getTime();
-        if (timeDiff > 0) {
-          const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-          const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-          const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-          setCountdown({ days, hours, minutes });
-        } else {
-          setCountdown({ days: 0, hours: 0, minutes: 0 });
+        console.error('Error loading first game time:', error);
+        if (!cancelled) {
+          setFirstGameTime(getNextThursdayKickoff());
         }
       }
     };
 
+    loadFirstGameTime();
+    return () => { cancelled = true; };
+  }, [nextWeek]);
+
+  // Countdown timer to first game of next week (recomputed locally, no network)
+  useEffect(() => {
+    if (!firstGameTime) return;
+
+    const updateCountdown = () => {
+      const timeDiff = firstGameTime.getTime() - Date.now();
+      const next = timeDiff > 0
+        ? {
+            days: Math.floor(timeDiff / (1000 * 60 * 60 * 24)),
+            hours: Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+            minutes: Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60))
+          }
+        : { days: 0, hours: 0, minutes: 0 };
+
+      // Skip the state update (and re-render) when nothing changed
+      setCountdown(prev =>
+        prev.days === next.days && prev.hours === next.hours && prev.minutes === next.minutes
+          ? prev
+          : next
+      );
+    };
+
     // Update immediately
     updateCountdown();
-    
+
     // Update every minute
     const interval = setInterval(updateCountdown, 60000);
-    
+
     return () => clearInterval(interval);
-  }, [nextWeek]); // Add nextWeek as dependency
+  }, [firstGameTime]);
 
   // Fix mobile scroll position on mount
   useEffect(() => {
@@ -234,7 +208,7 @@ function Home() {
           You have <strong>{countdown.days}</strong> <strong>{countdown.days === 1 ? 'day' : 'days'}</strong><strong>,</strong> <strong>{countdown.hours}</strong> <strong>{countdown.hours === 1 ? 'hour' : 'hours'}</strong><strong>,</strong> and{' '}
           <strong>{countdown.minutes}</strong> <strong>{countdown.minutes === 1 ? 'minute' : 'minutes'}</strong> to do your picks.
         </p>
-        <Link to="/make-picks" className="auto-pick-button">
+        <Link to="/make-picks" className="cta-button">
           Enter Week {nextWeek?.number || 'X'} Picks
         </Link>
       </div>
@@ -335,7 +309,7 @@ function Home() {
       <div className="quick-actions glass-container">
         <h2>Quick Actions</h2>
         <div className="action-buttons">
-          <Link to="/make-picks" className="auto-pick-button">
+          <Link to="/make-picks" className="cta-button">
             <TrendingUp size={20} />
             Make Picks
           </Link>
@@ -538,7 +512,7 @@ function Home() {
           text-decoration: none;
           font-size: 1.5rem;
           font-weight: 600;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
         }
 
         .stats-title-link:hover {
@@ -575,6 +549,16 @@ function Home() {
         .glass-table th:last-child,
         .glass-table td:last-child {
           border-right: none;
+        }
+
+        /* Current-user row: gold treatment to match WeeklyStandings/OverallStandings */
+        .glass-table tr.current-user {
+          background: rgba(255, 215, 0, 0.1);
+          box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.3);
+        }
+
+        .glass-table tr.current-user:hover {
+          background: rgba(255, 215, 0, 0.15);
         }
 
         .view-all-link {
@@ -616,8 +600,9 @@ function Home() {
           justify-content: center;
         }
 
-        .auto-pick-button {
+        .cta-button {
           background: linear-gradient(135deg, rgba(100, 150, 255, 0.3), rgba(150, 200, 255, 0.2));
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(100, 150, 255, 0.4);
           border-radius: 12px;
@@ -626,7 +611,7 @@ function Home() {
           font-size: 1rem;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           text-decoration: none;
           display: inline-block;
           text-align: center;
@@ -636,7 +621,7 @@ function Home() {
             inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
 
-        .auto-pick-button:hover {
+        .cta-button:hover {
           background: linear-gradient(135deg, rgba(100, 150, 255, 0.4), rgba(150, 200, 255, 0.3));
           border-color: rgba(100, 150, 255, 0.6);
           color: white;
@@ -647,7 +632,7 @@ function Home() {
             inset 0 1px 0 rgba(255, 255, 255, 0.3);
         }
 
-        .action-buttons .auto-pick-button {
+        .action-buttons .cta-button {
           display: flex;
           align-items: center;
           gap: 0.5rem;
@@ -655,7 +640,7 @@ function Home() {
           width: 200px;
           justify-content: center;
           margin: 0;
-          padding: 1rem 2rem; /* Match the base auto-pick-button padding */
+          padding: 1rem 2rem; /* Match the base cta-button padding */
         }
 
         /* Popup Styles */
@@ -666,6 +651,7 @@ function Home() {
           right: 0;
           bottom: 0;
           background: rgba(0, 0, 0, 0.3);
+          -webkit-backdrop-filter: blur(10px);
           backdrop-filter: blur(10px);
           z-index: 1000;
           display: flex;
@@ -682,6 +668,7 @@ function Home() {
           overflow-x: hidden;
           position: relative;
           background: rgba(255, 255, 255, 0.08);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 20px;
@@ -689,7 +676,7 @@ function Home() {
           box-shadow: 
             0 8px 32px rgba(0, 0, 0, 0.2),
             inset 0 1px 0 rgba(255, 255, 255, 0.1);
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
         }
 
         .popup-content:hover {
@@ -713,7 +700,7 @@ function Home() {
         .popup-content::-webkit-scrollbar-thumb {
           background: rgba(255, 255, 255, 0.2);
           border-radius: 4px;
-          transition: all 0.2s ease;
+          transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
           border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
@@ -743,13 +730,14 @@ function Home() {
 
         .popup-close {
           background: rgba(255, 255, 255, 0.08);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.15);
           color: rgba(255, 255, 255, 0.7);
           cursor: pointer;
           padding: 0.5rem;
           border-radius: 12px;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           box-shadow: 
             0 4px 16px rgba(0, 0, 0, 0.1),
             inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -861,7 +849,7 @@ function Home() {
           }
 
           /* Ensure buttons are visible and properly sized on mobile */
-          .auto-pick-button {
+          .cta-button {
             display: inline-block !important;
             width: 100%;
             max-width: 300px;
@@ -870,7 +858,7 @@ function Home() {
             font-size: 1.1rem;
           }
 
-          .action-buttons .auto-pick-button {
+          .action-buttons .cta-button {
             display: flex !important;
             align-items: center;
             justify-content: center;
@@ -878,7 +866,7 @@ function Home() {
             min-width: 200px;
             width: 200px;
             margin: 0 !important;
-            padding: 1rem 1.5rem !important; /* Match the mobile auto-pick-button padding */
+            padding: 1rem 1.5rem !important; /* Match the mobile cta-button padding */
           }
         }
       `}</style>

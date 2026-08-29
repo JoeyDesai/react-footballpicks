@@ -73,6 +73,7 @@ function Header() {
       <style jsx="true">{`
         .header {
           background: rgba(255, 255, 255, 0.1);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border-bottom: 1px solid rgba(255, 255, 255, 0.2);
           position: sticky;
@@ -86,10 +87,11 @@ function Header() {
             position: sticky !important;
             top: 0 !important;
             z-index: 1000 !important;
-            /* Prevent header from causing scroll offset */
+            /* Prevent header from causing scroll offset.
+               No will-change here: combined with position:sticky it makes the
+               blurred header jitter while scrolling on iOS. */
             transform: translateZ(0) !important;
             -webkit-transform: translateZ(0) !important;
-            will-change: transform !important;
           }
         }
 
@@ -110,7 +112,7 @@ function Header() {
           text-decoration: none;
           font-size: 1.5rem;
           font-weight: 700;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
         }
 
         .header-title:hover {
@@ -146,7 +148,7 @@ function Header() {
           color: rgba(255, 255, 255, 0.8);
           text-decoration: none;
           font-weight: 500;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           background: none;
           border: none;
           cursor: pointer;
@@ -181,7 +183,7 @@ function Header() {
           cursor: pointer;
           padding: 0.5rem;
           border-radius: 8px;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
         }
 
         .mobile-menu-btn:hover {
@@ -197,6 +199,7 @@ function Header() {
 
         .mobile-nav {
           background: rgba(255, 255, 255, 0.1);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border-top: 1px solid rgba(255, 255, 255, 0.2);
           padding: 1rem;
@@ -217,7 +220,7 @@ function Header() {
           font-weight: 500;
           padding: 0.75rem;
           border-radius: 8px;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           background: none;
           border: none;
           cursor: pointer;
@@ -232,6 +235,7 @@ function Header() {
 
         .mobile-nav-link.auto-pick-button {
           background: linear-gradient(135deg, rgba(100, 150, 255, 0.3), rgba(150, 200, 255, 0.2));
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(100, 150, 255, 0.4);
           color: white;

@@ -255,6 +255,7 @@ function Login() {
             width: 100%;
             margin: 0;
             /* Remove backdrop-filter on mobile to prevent cursor issues */
+            -webkit-backdrop-filter: none;
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
             /* Ensure proper text alignment */
@@ -279,6 +280,7 @@ function Login() {
             border-color: rgba(100, 150, 255, 0.6);
             box-shadow: 0 0 0 2px rgba(100, 150, 255, 0.2);
             background: rgba(255, 255, 255, 0.15);
+            -webkit-backdrop-filter: none;
             backdrop-filter: none;
             -webkit-backdrop-filter: none;
           }

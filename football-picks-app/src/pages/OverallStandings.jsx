@@ -5,6 +5,13 @@ import { statsAPI, authAPI } from '../services/api';
 import CustomDropdown from '../components/CustomDropdown';
 import { sanitizeString, sanitizeUserData } from '../utils/sanitize';
 
+// NFL seasons are labeled by the calendar year they start in; games in
+// January/February belong to the previous season's year.
+const getSeasonYear = () => {
+  const now = new Date();
+  return now.getMonth() < 6 ? now.getFullYear() - 1 : now.getFullYear();
+};
+
 // Utility function to format numbers - remove .0 but keep other decimals
 const formatNumber = (num) => {
   if (num == null || num === '') return num;
@@ -63,8 +70,18 @@ function OverallStandings() {
       setViewMode(newViewMode);
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    // Debounce resize events so we don't thrash state (and refetches) mid-drag
+    let resizeTimer;
+    const debouncedResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(handleResize, 150);
+    };
+
+    window.addEventListener('resize', debouncedResize);
+    return () => {
+      clearTimeout(resizeTimer);
+      window.removeEventListener('resize', debouncedResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -136,8 +153,8 @@ function OverallStandings() {
             >
               <div className="div-header-cell rank-header">#</div>
               <div className="div-header-cell player-header">Player</div>
-              <div className="div-header-cell data-header">Total Score</div>
               <div className="div-header-cell data-header">Total Correct</div>
+              <div className="div-header-cell data-header">Total Score</div>
               <div className="div-header-cell data-header">Average Week</div>
             </div>
           </div>
@@ -158,8 +175,8 @@ function OverallStandings() {
                     <span className="name">{player.nickname}</span>
                   </div>
                 </div>
-                <div className="div-body-cell score">{formatNumber(player.score || player.total_score)}</div>
                 <div className="div-body-cell correct">{formatNumber(player.numright || player.total_correct)}</div>
+                <div className="div-body-cell score">{formatNumber(player.score || player.total_score)}</div>
                 <div className="div-body-cell average">
                   {(player.weeks_played || 0) > 0 
                     ? formatNumber((player.score || player.total_score) / (player.weeks_played || 1))
@@ -285,8 +302,8 @@ function OverallStandings() {
             >
               <div className="div-header-cell rank-header">#</div>
               <div className="div-header-cell player-header">Player</div>
-              <div className="div-header-cell data-header">Total Score</div>
               <div className="div-header-cell data-header">Total Correct</div>
+              <div className="div-header-cell data-header">Total Score</div>
               <div className="div-header-cell data-header">Average</div>
             </div>
           </div>
@@ -307,8 +324,8 @@ function OverallStandings() {
                     <span className="name">{player.nickname}</span>
                   </div>
                 </div>
-                <div className="div-body-cell score">{formatNumber(player.score || player.total_score)}</div>
                 <div className="div-body-cell correct">{formatNumber(player.numright || player.total_correct)}</div>
+                <div className="div-body-cell score">{formatNumber(player.score || player.total_score)}</div>
                 <div className="div-body-cell average">
                   {(player.weeks_played || 0) > 0 
                     ? formatNumber((player.score || player.total_score) / (player.weeks_played || 1))
@@ -432,8 +449,8 @@ function OverallStandings() {
             >
               <div className="div-header-cell rank-header">#</div>
               <div className="div-header-cell player-header">Player</div>
-              <div className="div-header-cell data-header">Score</div>
               <div className="div-header-cell data-header">Correct</div>
+              <div className="div-header-cell data-header">Score</div>
               <div className="div-header-cell data-header">Avg.</div>
             </div>
           </div>
@@ -454,8 +471,8 @@ function OverallStandings() {
                     <span className="name">{player.nickname}</span>
                   </div>
                 </div>
-                <div className="div-body-cell score">{formatNumber(player.score || player.total_score)}</div>
                 <div className="div-body-cell correct">{formatNumber(player.numright || player.total_correct)}</div>
+                <div className="div-body-cell score">{formatNumber(player.score || player.total_score)}</div>
                 <div className="div-body-cell average">
                   {(player.weeks_played || 0) > 0 
                     ? formatNumber((player.score || player.total_score) / (player.weeks_played || 1))
@@ -606,7 +623,7 @@ function OverallStandings() {
 
       <div className="standings-table-container glass-container">
         <div className="season-info">
-          <h2>2025 Season Totals</h2>
+          <h2>{getSeasonYear()} Season Totals</h2>
           <p>Combined scores from all completed weeks</p>
         </div>
         {loading ? (
@@ -776,13 +793,14 @@ function OverallStandings() {
         .slider-track {
           position: relative;
           background: rgba(255, 255, 255, 0.08);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.15);
           border-radius: 12px;
           height: 40px;
           width: 100%;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
           box-shadow: 
             0 4px 16px rgba(0, 0, 0, 0.1),
             inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -806,7 +824,7 @@ function OverallStandings() {
           border: 1px solid rgba(100, 150, 255, 0.4);
           border-radius: 10px;
           cursor: pointer;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -898,6 +916,7 @@ function OverallStandings() {
         /* Desktop Layout Styles */
         .desktop-table-container {
           background: rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
@@ -913,6 +932,7 @@ function OverallStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -929,6 +949,7 @@ function OverallStandings() {
         .mobile-header-container {
           width: 100%;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           position: sticky;
           top: 0;
@@ -980,6 +1001,7 @@ function OverallStandings() {
         /* Tablet Layout Styles */
         .tablet-table-container {
           background: rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
@@ -1000,6 +1022,7 @@ function OverallStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -1013,6 +1036,7 @@ function OverallStandings() {
         /* Mobile Layout Styles */
         .mobile-table-container {
           background: rgba(255, 255, 255, 0.05);
+          -webkit-backdrop-filter: blur(15px);
           backdrop-filter: blur(15px);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
@@ -1028,6 +1052,7 @@ function OverallStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -1062,7 +1087,7 @@ function OverallStandings() {
         .div-scroll-container::-webkit-scrollbar-thumb {
           background: rgba(200, 200, 200, 0.4);
           border-radius: 3px;
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
         }
 
         .div-scroll-container::-webkit-scrollbar-thumb:hover {
@@ -1083,6 +1108,7 @@ function OverallStandings() {
           top: 0;
           z-index: 10;
           background: rgba(20, 22, 36, 0.75);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
         }
 
@@ -1184,7 +1210,7 @@ function OverallStandings() {
 
         .no-data {
           text-align: center;
-          padding: 3rem;
+          padding: 3rem 2rem;
           color: rgba(255, 255, 255, 0.6);
         }
 
@@ -1199,110 +1225,6 @@ function OverallStandings() {
           margin-bottom: 0.5rem;
         }
 
-        .full-table-container {
-          width: 100%;
-          max-width: 100%;
-          overflow: hidden;
-          position: relative;
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.05);
-          backdrop-filter: blur(15px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .div-header-row:not(.quick-header) {
-          display: grid;
-          gap: 0.05rem;
-          min-width: 100%;
-          width: 100%;
-        }
-
-        .div-body-row:not(.quick-row) {
-          display: grid;
-          gap: 0.05rem;
-          min-width: 100%;
-          width: 100%;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-          transition: background-color 0.0s ease;
-          cursor: default;
-          position: relative;
-        }
-
-        .div-body-row:not(.quick-row)::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          z-index: -1;
-          transition: background-color 0.0s ease;
-          width: var(--calculated-width, 100%);
-        }
-
-        .div-body-row:not(.quick-row):hover::before {
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        .div-body-row:not(.quick-row).selected::before {
-          background: rgba(100, 150, 255, 0.1);
-          box-shadow: inset 0 0 0 1px rgba(100, 150, 255, 0.3);
-        }
-
-        .div-body-row:not(.quick-row).current-user::before {
-          background: rgba(255, 215, 0, 0.1);
-          box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.3);
-        }
-
-        .div-body-row:not(.quick-row).current-user:hover::before {
-          background: rgba(255, 215, 0, 0.15);
-        }
-
-        .div-body-row:not(.quick-row).current-user.selected::before {
-          background: rgba(255, 215, 0, 0.2);
-          box-shadow: inset 0 0 0 1px rgba(255, 215, 0, 0.5);
-        }
-
-        .div-header-cell:not(.quick-header .div-header-cell) {
-          border-right: 1px solid rgba(255, 255, 255, 0.1);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-          padding: 0.25rem 0.2rem;
-          font-weight: 600;
-          color: rgba(150, 200, 255, 1);
-          text-align: center;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 0.8rem;
-          min-height: 32px;
-        }
-
-        .div-body-cell:not(.quick-row .div-body-cell) {
-          border-right: 1px solid rgba(255, 255, 255, 0.1);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-          padding: 0.2rem 0.1rem;
-          text-align: center;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 0.8rem !important;
-          cursor: default;
-          min-height: 32px;
-        }
-
-        .div-body-cell:not(.quick-row .div-body-cell).player-name {
-          text-align: left !important;
-          justify-content: flex-start !important;
-          padding-left: 5px;
-          font-size: 1.1rem !important;
-        }
-
-        .div-header-cell:not(.quick-header .div-header-cell).player-header {
-          text-align: left !important;
-          justify-content: flex-start !important;
-          padding-left: 5px;
-        }
-
         .div-body-cell.player-name .name {
           white-space: nowrap;
           overflow: hidden;
@@ -1310,41 +1232,6 @@ function OverallStandings() {
           max-width: 100%;
           display: block;
           width: 100%;
-        }
-
-        .rank {
-          font-weight: 600;
-          color: rgba(150, 200, 255, 1);
-        }
-
-        .player-name {
-          font-weight: 600;
-          text-align: left !important;
-        }
-
-        .player-info {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .name {
-          color: white;
-        }
-
-        .score {
-          font-weight: 700;
-          color: rgba(150, 200, 255, 1);
-        }
-
-        .correct {
-          color: rgba(150, 255, 150, 1);
-          font-weight: 600;
-        }
-
-        .average {
-          color: rgba(255, 200, 100, 1);
-          font-weight: 600;
         }
 
         /* Total column header styling */
@@ -1368,7 +1255,7 @@ function OverallStandings() {
 
         .total-score {
           font-weight: 700;
-          color: rgba(150, 255, 150, 1);
+          color: rgba(150, 200, 255, 1);
           font-size: 0.9rem;
           line-height: 1;
         }

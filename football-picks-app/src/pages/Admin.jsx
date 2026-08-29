@@ -256,11 +256,17 @@ function Admin() {
   // Save user picks to database
   const saveUserPicks = async () => {
     if (!selectedUser || !selectedWeek) return;
-    
+
     setLoading(true);
+    setError('');
+    setSuccess('');
     try {
-      await adminAPI.submitUserPicks(selectedUser.id, selectedWeek, userPicks);
-      setSuccess('Picks saved successfully');
+      const response = await adminAPI.submitUserPicks(selectedUser.id, selectedWeek, userPicks);
+      if (response.data.success) {
+        setSuccess('Picks saved successfully');
+      } else {
+        setError(response.data.error || 'Failed to save picks');
+      }
     } catch (error) {
       console.error('Error saving picks:', error);
       setError('Failed to save picks');
@@ -272,9 +278,15 @@ function Admin() {
   // Run individual update script
   const runUpdateScript = async (scriptType) => {
     setLoading(true);
+    setError('');
+    setSuccess('');
     try {
       const response = await adminAPI.runScript(scriptType);
-      setSuccess(response.data.message);
+      if (response.data.success) {
+        setSuccess(response.data.message || `${scriptType} script executed successfully`);
+      } else {
+        setError(response.data.error || `Failed to run ${scriptType} script`);
+      }
     } catch (error) {
       console.error(`Error running ${scriptType} script:`, error);
       setError(`Failed to run ${scriptType} script`);
@@ -286,6 +298,8 @@ function Admin() {
   // Run all update scripts in sequence
   const runAllUpdateScripts = async () => {
     setLoading(true);
+    setError('');
+    setSuccess('');
     try {
       const scripts = ['individualRecords', 'losers', 'teamRecords'];
       let allSuccess = true;
@@ -294,7 +308,13 @@ function Admin() {
       for (const script of scripts) {
         try {
           const response = await adminAPI.runScript(script);
-          console.log(`${script} script completed:`, response.data.message);
+          if (response.data.success) {
+            console.log(`${script} script completed:`, response.data.message);
+          } else {
+            console.error(`Error running ${script} script:`, response.data.error);
+            allSuccess = false;
+            errorMessage += `${script} failed; `;
+          }
         } catch (error) {
           console.error(`Error running ${script} script:`, error);
           allSuccess = false;
@@ -329,13 +349,19 @@ function Admin() {
   // Save user tag assignments
   const saveUserTags = async () => {
     if (!selectedUser) return;
-    
+
     setLoading(true);
+    setError('');
+    setSuccess('');
     try {
-      await adminAPI.updateUserTags(selectedUser.id, selectedTags);
-      setSuccess('User tags updated successfully');
-      // Reload user tags to reflect changes
-      loadUserTags(selectedUser.id);
+      const response = await adminAPI.updateUserTags(selectedUser.id, selectedTags);
+      if (response.data.success) {
+        setSuccess('User tags updated successfully');
+        // Reload user tags to reflect changes
+        loadUserTags(selectedUser.id);
+      } else {
+        setError(response.data.error || 'Failed to save user tags');
+      }
     } catch (error) {
       console.error('Error saving user tags:', error);
       setError('Failed to save user tags');
@@ -344,17 +370,26 @@ function Admin() {
     }
   };
 
+  // Week dropdown options with the current week annotated, matching WeeklyStandings
+  const weekOptions = (Array.isArray(weeks) ? weeks : []).map(week => ({
+    value: week.id,
+    label: !week.future && !week.completed ? `Week ${week.number} (Current)` : `Week ${week.number}`
+  }));
+
   // Render picks status panel
   const renderPicksStatus = () => (
     <div className="admin-panel">
       <div className="admin-panel-header">
         <h2>Picks Status</h2>
-        <CustomDropdown
-          options={weeks.map ? weeks.map(week => ({ value: week.id, label: `Week ${week.number}` })) : []}
-          value={selectedWeek}
-          onChange={setSelectedWeek}
-          placeholder="Select Week"
-        />
+        <div className="week-selector">
+          <label htmlFor="week-select">Week</label>
+          <CustomDropdown
+            options={weekOptions}
+            value={selectedWeek}
+            onChange={setSelectedWeek}
+            placeholder="Select Week"
+          />
+        </div>
       </div>
       
       <div className="picks-status-content">
@@ -444,12 +479,15 @@ function Admin() {
         <div className="user-picks-interface">
           <div className="selected-user-info">
             <h3>Making picks for: {selectedUser.nickname || selectedUser.realname || selectedUser.email}</h3>
-            <CustomDropdown
-              options={weeks.map ? weeks.map(week => ({ value: week.id, label: `Week ${week.number}` })) : []}
-              value={selectedWeek}
-              onChange={setSelectedWeek}
-              placeholder="Select Week"
-            />
+            <div className="week-selector">
+              <label htmlFor="week-select">Week</label>
+              <CustomDropdown
+                options={weekOptions}
+                value={selectedWeek}
+                onChange={setSelectedWeek}
+                placeholder="Select Week"
+              />
+            </div>
           </div>
           
           <div className="games-container glass-container">
@@ -861,7 +899,7 @@ function Admin() {
           border: 2px solid rgba(255, 255, 255, 0.3);
           border-radius: 50%;
           background: rgba(255, 255, 255, 0.05);
-          transition: all 0.3s ease;
+          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
           position: relative;
         }
 
@@ -882,6 +920,25 @@ function Admin() {
           background: rgba(100, 150, 255, 1);
         }
         
+        /* Week Selector (matches WeeklyStandings/MakePicks) */
+        .week-selector {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .week-selector label {
+          color: rgba(255, 255, 255, 0.8);
+          font-weight: 600;
+          font-size: 0.9rem;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .week-selector .custom-dropdown {
+          width: 180px;
+        }
+
         /* Spacing between week title and games */
         .games-spacing {
           height: 2rem;
@@ -905,13 +962,14 @@ function Admin() {
         /* Auto Pick Button */
         .auto-pick-button {
           background: rgba(255, 255, 255, 0.08);
+          -webkit-backdrop-filter: blur(20px);
           backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.15);
           color: rgba(255, 255, 255, 0.7);
           padding: 0.6rem 1rem;
           border-radius: 12px;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
           font-size: 0.9rem;
           font-weight: 500;
           display: flex;
