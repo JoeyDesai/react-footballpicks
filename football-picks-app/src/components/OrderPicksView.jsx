@@ -49,12 +49,22 @@ function OrderPicksView({
     }
   };
 
-  const clearTransforms = () => {
+  const clearTransforms = (freeze = false) => {
     for (const el of rowRefs.current.values()) {
+      // freeze: kill transitions so rows snap straight into their final
+      // layout slots instead of animating back to their old ones first
+      el.style.transition = freeze ? 'none' : '';
       el.style.transform = '';
-      el.style.transition = '';
       el.style.zIndex = '';
       el.classList.remove('op-row-dragging');
+    }
+    if (freeze) {
+      // restore transitions once the re-render has painted
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        for (const el of rowRefs.current.values()) {
+          el.style.transition = '';
+        }
+      }));
     }
   };
 
@@ -69,12 +79,19 @@ function OrderPicksView({
       /* capture can fail for synthetic events; drag still works via bubbling */
     }
 
+    // Measure real row spacing from the neighbor row (gap varies by breakpoint)
+    const neighborId = orderedGames[index + 1]?.id ?? orderedGames[index - 1]?.id;
+    const neighbor = neighborId != null ? rowRefs.current.get(neighborId) : null;
+    const rowH = neighbor
+      ? Math.abs(neighbor.getBoundingClientRect().top - row.getBoundingClientRect().top)
+      : row.getBoundingClientRect().height + ROW_GAP_PX;
+
     drag.current = {
       gameId,
       startIndex: index,
       curIndex: index,
       startY: clientY,
-      rowH: row.getBoundingClientRect().height + ROW_GAP_PX,
+      rowH,
       pointerId,
     };
     row.classList.add('op-row-dragging');
@@ -152,8 +169,12 @@ function OrderPicksView({
     window.removeEventListener('pointerup', onWindowPointerUp);
     window.removeEventListener('pointercancel', onWindowPointerCancel);
     window.removeEventListener('blur', onWindowBlur);
-    clearTransforms();
-    if (!commit || d.curIndex === d.startIndex) {
+    // Committed drop: rows are already visually in their final spots, so
+    // snap the layout under them with no transition. Cancelled drag: let
+    // the rows glide back smoothly.
+    const committing = commit && d.curIndex !== d.startIndex;
+    clearTransforms(committing);
+    if (!committing) {
       orderedGames.forEach((g, i) => {
         const badge = rowRefs.current.get(g.id)?.querySelector('.op-points-num');
         if (badge) badge.textContent = totalGames - i;
@@ -162,7 +183,7 @@ function OrderPicksView({
     // Swallow the click that follows releasing a drag so it can't pick a team
     suppressClick.current = true;
     setTimeout(() => { suppressClick.current = false; }, 0);
-    if (commit && d.curIndex !== d.startIndex) {
+    if (committing) {
       onMove(d.gameId, d.startIndex, d.curIndex);
     }
   };
@@ -285,7 +306,9 @@ function OrderPicksView({
             {wins}-{losses}{ties > 0 ? `-${ties}` : ''}
           </span>
         </span>
-        {selected && <span className="op-team-check" aria-hidden="true">✓</span>}
+        <span className={`op-team-mark ${selected ? 'checked' : ''}`} aria-hidden="true">
+          {selected ? '✓' : ''}
+        </span>
       </button>
     );
   };
@@ -489,6 +512,8 @@ function OrderPicksView({
           display: flex;
           flex-direction: column;
           min-width: 0;
+          /* Push the pick mark all the way to the end of the box */
+          flex: 1;
         }
 
         .op-team-name {
@@ -504,11 +529,25 @@ function OrderPicksView({
           color: rgba(255, 255, 255, 0.55);
         }
 
-        .op-team-check {
-          margin: 0 0.25rem;
-          color: rgba(150, 200, 255, 1);
-          font-weight: 700;
+        .op-team-mark {
+          width: 20px;
+          height: 20px;
           flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          border: 2px solid rgba(255, 255, 255, 0.35);
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: transparent;
+          transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+        }
+
+        .op-team-mark.checked {
+          border-color: rgba(100, 150, 255, 0.9);
+          background: rgba(100, 150, 255, 0.85);
+          color: white;
         }
 
         .op-at {
@@ -537,6 +576,53 @@ function OrderPicksView({
         .op-grip:active {
           cursor: grabbing;
           color: rgba(150, 200, 255, 1);
+        }
+
+        /* Desktop: tighten rows so a full 16-game week fits on one screen */
+        @media (min-width: 900px) {
+          .op-list {
+            gap: 5px;
+          }
+
+          .op-row {
+            padding: 0.22rem 0.5rem;
+            gap: 0.5rem;
+          }
+
+          .op-team {
+            padding: 0.22rem 0.5rem;
+            gap: 0.5rem;
+          }
+
+          .op-team-logo {
+            width: 24px;
+            height: 24px;
+          }
+
+          .op-team-name {
+            font-size: 0.88rem;
+          }
+
+          .op-team-record {
+            font-size: 0.65rem;
+          }
+
+          .op-points {
+            min-width: 48px;
+            flex-direction: row;
+            gap: 0.25rem;
+            align-items: center;
+            justify-content: center;
+            padding: 0 0.4rem;
+          }
+
+          .op-points-num {
+            font-size: 1rem;
+          }
+
+          .op-points-label {
+            font-size: 0.55rem;
+          }
         }
 
         @media (max-width: 640px) {
@@ -627,8 +713,11 @@ function OrderPicksView({
             height: 26px;
           }
 
-          .op-team-check {
-            display: none;
+          .op-team-mark {
+            width: 15px;
+            height: 15px;
+            border-width: 1.5px;
+            font-size: 0.55rem;
           }
 
           .op-grip {

@@ -22,7 +22,7 @@ function Footer() {
           </button>
         </div>
         <div className="footer-text">
-          <p>&copy; 2025 Football Picks. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Football Picks. All rights reserved.</p>
         </div>
       </div>
 

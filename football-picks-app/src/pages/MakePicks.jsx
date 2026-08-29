@@ -19,7 +19,7 @@ function MakePicks() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [readOnly, setReadOnly] = useState(false);
-  const [viewMode, setViewMode] = useState('tiles'); // 'tiles', 'classic', 'dragdrop'
+  const [viewMode, setViewMode] = useState('dragdrop'); // 'tiles', 'classic', 'dragdrop'
   const [autoPickHighest, setAutoPickHighest] = useState(true);
   const [validationErrors, setValidationErrors] = useState([]);
   // Tracks the latest games/picks request so stale responses are discarded
@@ -90,18 +90,10 @@ function MakePicks() {
       const response = await gameAPI.getWeeks();
       if (response.data.success) {
         setWeeks(response.data.weeks);
-        // Auto-select next week to make picks for (same strategy as weekly standings but +1)
-        const completedWeeks = response.data.weeks.filter(w => w.completed);
-        const currentWeek = completedWeeks[completedWeeks.length - 1];
-
-        if (currentWeek) {
-          // Find the next week after the last started week
-          const currentIndex = response.data.weeks.findIndex(w => w.id === currentWeek.id);
-          setSelectedWeek(response.data.weeks[currentIndex + 1] || currentWeek);
-        } else {
-          // No week has started yet (pre-season): pick the first week
-          setSelectedWeek(response.data.weeks[0]);
-        }
+        // Auto-select the week to pick: the first one that hasn't started
+        // (pre-season: week 1; end of season: fall back to the last week)
+        const w = response.data.weeks;
+        setSelectedWeek(w.find(wk => wk.future) || w[w.length - 1]);
       }
     } catch (error) {
       setError('Failed to load weeks');
@@ -418,7 +410,7 @@ function MakePicks() {
 
     if (readOnly) {
       return (
-        <div className={`team-choice team-choice-${variant} readonly ${selected ? 'selected' : ''}`}>
+        <div className={`team-choice team-choice-${variant} ${variant === 'classic' && side === 'home' ? 'team-choice-mirror' : ''} readonly ${selected ? 'selected' : ''}`}>
           <img
             src={`/images/${getTeamImageName(name)}.svg`}
             alt=""
@@ -440,7 +432,7 @@ function MakePicks() {
     return (
       <button
         type="button"
-        className={`team-choice team-choice-${variant} ${selected ? 'selected' : ''}`}
+        className={`team-choice team-choice-${variant} ${variant === 'classic' && side === 'home' ? 'team-choice-mirror' : ''} ${selected ? 'selected' : ''}`}
         onClick={() => handlePickChange(game.id, teamId)}
         aria-pressed={selected}
       >
@@ -694,8 +686,8 @@ function MakePicks() {
                       className={`track-label ${viewMode === 'dragdrop' ? 'track-label-active' : 'track-label-inactive'}`}
                       onClick={() => setViewMode('dragdrop')}
                     >
-                      <span className="desktop-text">Order</span>
-                      <span className="mobile-text">Order</span>
+                      <span className="desktop-text">Drag &amp; Drop</span>
+                      <span className="mobile-text">Drag &amp; Drop</span>
                     </span>
                   </div>
                 </div>
@@ -706,12 +698,8 @@ function MakePicks() {
               <label htmlFor="week-select">Week</label>
               <CustomDropdown
                 options={(() => {
-                  // Calculate auto-selected week once outside the map
-                  const completedWeeks = weeks.filter(w => w.completed);
-                  const currentWeek = completedWeeks[completedWeeks.length - 1];
-                  const currentIndex = currentWeek ? weeks.findIndex(w => w.id === currentWeek.id) : -1;
-                  // Pre-season (no started week): index -1 + 1 = weeks[0]
-                  const autoSelectedWeek = weeks[currentIndex + 1] || currentWeek;
+                  // The pickable week is the first one that hasn't started
+                  const autoSelectedWeek = weeks.find(w => w.future) || weeks[weeks.length - 1];
                   
                   return weeks.map(week => {
                     const isAutoSelected = week.id === autoSelectedWeek?.id;
@@ -911,8 +899,9 @@ function MakePicks() {
           z-index: 10000 !important;
         }
 
-        .custom-dropdown {
-          width: 180px !important;
+        /* Header selectors need room for "Week 10 (Due Next)" on one line */
+        .week-selector .custom-dropdown {
+          width: 210px;
         }
 
         /* Prevent scroll interference with dropdowns */
@@ -1035,7 +1024,8 @@ function MakePicks() {
           border: 1px solid rgba(100, 150, 255, 0.4);
           border-radius: 10px;
           cursor: pointer;
-          transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
+          /* Slide between positions */
+          transition: transform 0.3s cubic-bezier(0.3, 0.9, 0.3, 1), background 0.3s ease, border-color 0.3s ease;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1047,11 +1037,11 @@ function MakePicks() {
         }
 
         .slider-thumb-center {
-          left: calc(33.333% - 2px);
+          transform: translateX(100%);
         }
 
         .slider-thumb-right {
-          left: calc(66.666% - 2px);
+          transform: translateX(200%);
         }
 
         .slider-track-labels {
@@ -1537,7 +1527,7 @@ function MakePicks() {
 
           .custom-dropdown {
             width: 100% !important;
-            max-width: 180px;
+            max-width: 220px;
           }
         }
 
@@ -1644,7 +1634,10 @@ function MakePicks() {
           border-color: rgba(255, 255, 255, 0.28);
         }
 
-        .team-choice.selected {
+        /* Selected stays blue even while hovered (hover has higher
+           specificity than .selected alone) */
+        .team-choice.selected,
+        .team-choice.selected:hover:not(.readonly) {
           background: rgba(100, 150, 255, 0.22);
           border-color: rgba(100, 150, 255, 0.65);
           box-shadow: 0 0 14px rgba(100, 150, 255, 0.25);
@@ -1713,11 +1706,17 @@ function MakePicks() {
           width: 100%;
         }
 
+        /* Home buttons mirror so the pick mark sits on the inner side */
+        .team-choice-mirror {
+          flex-direction: row-reverse;
+          text-align: right;
+        }
+
         /* --- Condensed Classic view --- */
         .classic-list {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 5px;
         }
 
         .classic-row {
@@ -1725,7 +1724,7 @@ function MakePicks() {
           grid-template-columns: 130px 1fr 18px 1fr 108px;
           align-items: center;
           gap: 0.5rem;
-          padding: 0.35rem 0.5rem;
+          padding: 0.2rem 0.45rem;
           border-radius: 12px;
           background: rgba(255, 255, 255, 0.04);
           border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1743,12 +1742,19 @@ function MakePicks() {
         }
 
         .classic-row .team-choice {
-          padding: 0.3rem 0.5rem;
+          padding: 0.22rem 0.5rem;
+          gap: 0.5rem;
         }
 
         .classic-row .team-choice-logo {
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
+        }
+
+        .classic-row .team-choice-mark {
+          width: 20px;
+          height: 20px;
+          font-size: 0.72rem;
         }
 
         .classic-row .team-choice-name {

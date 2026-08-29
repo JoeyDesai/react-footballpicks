@@ -441,6 +441,10 @@ app.get('/api/overall-standings', requireAuth, async (req, res) => {
       SELECT u.id, u.nickname, 
              COALESCE(SUM(s.score), 0) as score,
              COALESCE(SUM(s.numright), 0) as numright,
+             (SELECT COUNT(*) FROM picks pk
+                JOIN games g ON pk.game = g.id
+                JOIN weeks w2 ON g.week = w2.id
+               WHERE pk.picker = u.id AND w2.year = $1 AND w2.startdate < NOW()) as total_picks,
              COUNT(DISTINCT s.week) as weeks_played
       FROM pickers u
       LEFT JOIN scores s ON u.id = s.picker
@@ -481,6 +485,10 @@ app.get('/api/overall-standings-detailed', requireAuth, async (req, res) => {
       SELECT u.id, u.nickname, 
              COALESCE(SUM(s.score), 0) as total_score,
              COALESCE(SUM(s.numright), 0) as total_correct,
+             (SELECT COUNT(*) FROM picks pk
+                JOIN games g ON pk.game = g.id
+                JOIN weeks w2 ON g.week = w2.id
+               WHERE pk.picker = u.id AND w2.year = $1 AND w2.startdate < NOW()) as total_picks,
              COUNT(DISTINCT s.week) as weeks_played
       FROM pickers u
       LEFT JOIN scores s ON u.id = s.picker

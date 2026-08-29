@@ -184,13 +184,6 @@ body.iphone-pwa .header {
   transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease, opacity 0.3s ease;
 }
 
-.glass-container:hover {
-  transform: translateY(-2px) translateZ(0);
-  box-shadow: 
-    0 12px 40px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
 .glass-input {
   background: rgba(255, 255, 255, 0.1);
   -webkit-backdrop-filter: blur(10px);
@@ -555,6 +548,9 @@ body.iphone-pwa .header {
 }
 
 .dropdown-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   flex: 1;
   text-align: left;
 }
@@ -570,11 +566,8 @@ body.iphone-pwa .header {
 }
 
 .dropdown-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: rgba(20, 20, 30, 0.6) !important;
+  /* Positioned inline by CustomDropdown (fixed, portaled to <body>) */
+  background: rgba(20, 20, 30, 0.85) !important;
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(60, 60, 80, 0.65);

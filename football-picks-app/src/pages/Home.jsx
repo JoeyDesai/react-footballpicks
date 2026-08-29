@@ -174,14 +174,10 @@ function Home() {
       }
 
       if (weeksResponse.data.success) {
-        // Find the next week for making picks
+        // The week to make picks for is the first one that hasn't started
+        // (pre-season: week 1; end of season: fall back to the last week)
         const weeks = weeksResponse.data.weeks;
-        const completedWeeks = weeks.filter(w => w.completed);
-        const currentWeek = completedWeeks[completedWeeks.length - 1];
-
-        // Week after the last started week; pre-season (index -1 + 1) gives weeks[0]
-        const currentIndex = currentWeek ? weeks.findIndex(w => w.id === currentWeek.id) : -1;
-        setNextWeek(weeks[currentIndex + 1] || currentWeek);
+        setNextWeek(weeks.find(w => w.future) || weeks[weeks.length - 1]);
       }
     } catch (error) {
       console.error('Error loading home data:', error);
@@ -202,7 +198,7 @@ function Home() {
   // Main home page layout
   return (
     <div className="home-container">
-      <div className="welcome-section glass-container">
+      <div className="welcome-section glass-container home-enter">
         <h1>Welcome back, {getSafeDisplayName(user)}!</h1>
         <p>
           You have <strong>{countdown.days}</strong> <strong>{countdown.days === 1 ? 'day' : 'days'}</strong><strong>,</strong> <strong>{countdown.hours}</strong> <strong>{countdown.hours === 1 ? 'hour' : 'hours'}</strong><strong>,</strong> and{' '}
@@ -213,7 +209,7 @@ function Home() {
         </Link>
       </div>
 
-      <div className="stats-grid">
+      <div className="stats-grid home-enter home-enter-2">
         {/* Weekly standings preview */}
         <div className="stats-card glass-container">
           <div className="stats-header">
@@ -306,7 +302,7 @@ function Home() {
       </div>
 
       {/* Quick action buttons */}
-      <div className="quick-actions glass-container">
+      <div className="quick-actions glass-container home-enter home-enter-3">
         <h2>Quick Actions</h2>
         <div className="action-buttons">
           <Link to="/make-picks" className="cta-button">
@@ -444,6 +440,32 @@ function Home() {
       )}
 
       <style jsx="true">{`
+        .home-enter {
+          opacity: 0;
+          animation: homeRise 0.55s cubic-bezier(0.22, 0.9, 0.35, 1) forwards;
+        }
+
+        .home-enter-2 { animation-delay: 0.12s; }
+        .home-enter-3 { animation-delay: 0.24s; }
+
+        @keyframes homeRise {
+          from {
+            opacity: 0;
+            transform: translateY(14px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .home-enter {
+            animation: none;
+            opacity: 1;
+          }
+        }
+
         .home-container {
           max-width: 1200px;
           margin: 0 auto;
