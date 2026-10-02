@@ -1,5 +1,5 @@
 #!/usr/bin/php
-<?php 
+<?php
 $debug = 0;
 
 function dprint($msg, $level=3) {
@@ -9,40 +9,30 @@ function dprint($msg, $level=3) {
   }
 }
 
+#  Scores come from the NFL Kickoff Feed (footballschedule.rovaweb.co), which
+#  pulls ESPN every 5 minutes while games are on. Yahoo stopped embedding the
+#  root.App.main JSON this script used to parse.
+#  Fields per game: awayAbbr, homeAbbr, awayScore, homeScore, completed and
+#  clockDisplay ('' pregame, 'Q3 4:12', 'Half', 'Final', 'F/OT', 'Postponed').
 dprint ("Getting scores ...");
-$url = "https://sports.yahoo.com/nfl/scoreboard/";
+$url = "https://footballschedule.rovaweb.co/api/scores.json?week=current";
 $ch = curl_init();
 curl_setopt($ch,CURLOPT_URL,$url);
 curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
 curl_setopt($ch,CURLOPT_CONNECTTIMEOUT,5);
+curl_setopt($ch,CURLOPT_TIMEOUT,20);
+curl_setopt($ch,CURLOPT_USERAGENT,"footballpicks-scores/2.0");
 $content = curl_exec($ch);
+$http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
-if (preg_match("/root.App.main = (.*);/",$content,$Regs)) {
-  $data_txt = $Regs[1];
-} else {
+if ($http != 200 or empty($content)) {
+  die("Could not get data (HTTP $http)\n");
+}
+$data = json_decode($content);
+if (!$data or !isset($data->games)) {
   die("Could not get data\n");
 }
-$data = json_decode($data_txt);
-
-#$tmp = var_export($data,true);
-#dprint("Got the following:\n$tmp", 4);
-#exit;
-
-#  Figure out the teams
-$teams = array();
-
-foreach ($data->context->dispatcher->stores->TeamsStore->teams as $key => $val) {
-  if (!preg_match('/nfl/',$key)) {
-    continue;
-  }
-  if (!empty($data->context->dispatcher->stores->TeamsStore->teams->$key->abbr)) {
-    $abbr = $data->context->dispatcher->stores->TeamsStore->teams->$key->abbr;
-    #print "\n<br />$key -> $abbr ";
-    $teams[$key] = $abbr;
-    $teams[$abbr] = $key;
-  }
-}
-
+dprint("Feed week " . $data->week . ", scores checked " . $data->scoresCheckedAt);
 
 $NoLogin = 1;
 $NoHeader = 1;
@@ -60,39 +50,21 @@ if (count($Result)) {
   die ("Error - cannot find week id in database for $CurYear\n");
 }
 dprint("WeekId = $WeekId");
-#exit;
-  
-foreach($data->context->dispatcher->stores->GamesStore->games as $game => $val) {
-  #print_r($val);
-  #exit;
 
-  #  Make sure this is an nfl game
-  if (!preg_match('/nfl/',$val->home_team_id)) {
-    continue;
-  }
+foreach($data->games as $val) {
 
-  if ($val->status_description == "Final") {
-    $Time = "Final";
-  } else if (preg_match('/final.*overtime/i', $val->status_description)) {
-    $Time = "F/OT";
-  } else if (!empty($val->is_halftime) and $val->is_halftime == 'true') {
-    $Time = 'Half';
-  } else if (!empty($val->last_play->period) and !empty($val->last_play->clock)) {
-    $Time = 'Q' . $val->last_play->period . " " . $val->last_play->clock;
-  } else {
-    $Time = "";
-  }
-  
+  $Time = isset($val->clockDisplay) ? $val->clockDisplay : "";
+
   #  These values come from the external API and are interpolated into SQL
   #  below, so constrain them: scores must be integers and $Time is limited
   #  to the characters the formats above can produce
   $Time = preg_replace('/[^A-Za-z0-9\/: .]/', '', $Time);
 
   dprint ("Time = $Time");
-  $Home = $teams[$val->home_team_id];
-  $HomeScore = intval($val->total_home_points);
-  $Away = $teams[$val->away_team_id];
-  $AwayScore = intval($val->total_away_points);
+  $Home = $val->homeAbbr;
+  $HomeScore = intval($val->homeScore);
+  $Away = $val->awayAbbr;
+  $AwayScore = intval($val->awayScore);
 
   if (!preg_match("/^[A-Z]{2,3}$/", $Home)) {
     print "Invalid Home team!";
@@ -104,10 +76,7 @@ foreach($data->context->dispatcher->stores->GamesStore->games as $game => $val) 
     exit;
   }
 
-  #print "$Away:$AwayScore $Home:$HomeScore $Time\n";
-  #continue;
-  #exit;
-
+  #  Feed uses standard abbreviations; our teams table differs for a few
   if ($Away == "JAX") {
     $Away = "JAC";
   }
@@ -141,17 +110,9 @@ foreach($data->context->dispatcher->stores->GamesStore->games as $game => $val) 
       $AwayId = $Result[0]['away'];
     } else {
       print "Error - cannot find game id in database for $CurYear and $Away @ $Home\n";
+      continue;
     }
     dprint ("GameId = $GameId");
-
-    ##  Update game info
-    #$info = json_encode($game);
-    #$info = pg_escape_string($info);
-    #dprint('Updating game info');
-    #dprint("info = $info", 4);
-    #$Sql = "update games set info='$info' where id=$GameId";
-    ##print "Sql = $Sql\n";
-    #$Result2 = dbquery($Sql);
 
     #  Update the scores if needed
     if ($AwayScore != $Result[0]['awayscore'] or
@@ -164,9 +125,8 @@ foreach($data->context->dispatcher->stores->GamesStore->games as $game => $val) 
         $Time != $Result[0]['time']) {
       dprint('Updating game score and time');
       $Sql = "UPDATE games SET awayscore=" . $AwayScore . ", homescore=" . $HomeScore . ", time='$Time' where id=$GameId";
-      #print "$Sql\n";
       $Result = dbquery($Sql);
-      if (preg_match('/final/i', $val->status_description)) {
+      if (!empty($val->completed)) {
         dprint('Score is final - setting winners and losers');
         if ($AwayScore > $HomeScore) {
           $Winner = $AwayId;
@@ -187,13 +147,9 @@ foreach($data->context->dispatcher->stores->GamesStore->games as $game => $val) 
     dprint("Pregame - Not updating $Away @ $Home");
   }
 }
-#print "\nFix Me!\n"; exit;
 
-#  Force an update every time
-#$DoUpdate=1;
 if ($DoUpdate) {
   dprint('Updating results ...');
-  #print "Games have completed - updating ...\n";
   include 'update_losers.inc';
   include 'update_teamrecords.inc';
   include 'update_individualrecords.inc';
