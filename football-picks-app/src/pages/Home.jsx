@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Trophy, Calendar, TrendingUp, BarChart3, HelpCircle, QrCode, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { statsAPI, gameAPI } from '../services/api';
+import { statsAPI } from '../services/api';
 import { sanitizeString, sanitizeUserData, getSafeDisplayName } from '../utils/sanitize';
 
 function Home() {
@@ -34,44 +34,15 @@ function Home() {
     return nextThursday;
   };
 
-  // Fetch next week's games once to find the first kickoff time
+  // Count down to the week's start date: that is when the server locks picks
+  // (games.date can be missing a game, e.g. a Wednesday opener).
   useEffect(() => {
     if (!nextWeek) return;
-
-    let cancelled = false;
-    const loadFirstGameTime = async () => {
-      try {
-        const gamesResponse = await gameAPI.getGames(nextWeek.id);
-        const games = (gamesResponse.data.success && gamesResponse.data.games) || [];
-        const now = new Date();
-        let earliestGameTime = null;
-
-        // Find the first game that hasn't started yet
-        for (const game of games) {
-          if (game.date) {
-            const gameTime = new Date(game.date);
-            if (gameTime > now && (!earliestGameTime || gameTime < earliestGameTime)) {
-              earliestGameTime = gameTime;
-            }
-          }
-        }
-
-        if (!cancelled) {
-          setFirstGameTime(earliestGameTime || getNextThursdayKickoff());
-        }
-      } catch (error) {
-        console.error('Error loading first game time:', error);
-        if (!cancelled) {
-          setFirstGameTime(getNextThursdayKickoff());
-        }
-      }
-    };
-
-    loadFirstGameTime();
-    return () => { cancelled = true; };
+    const lockTime = nextWeek.startDate ? new Date(nextWeek.startDate) : null;
+    setFirstGameTime(lockTime && !isNaN(lockTime) ? lockTime : getNextThursdayKickoff());
   }, [nextWeek]);
 
-  // Countdown timer to first game of next week (recomputed locally, no network)
+  // Countdown timer to next week's pick deadline (recomputed locally, no network)
   useEffect(() => {
     if (!firstGameTime) return;
 
