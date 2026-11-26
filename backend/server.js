@@ -270,7 +270,7 @@ app.get('/api/weeks', requireAuth, async (req, res) => {
     // starts (or 7 days after its own start for the final week), so exactly
     // one week can be current at a time.
     const result = await pool.query(`
-      SELECT id, number, startdate,
+      SELECT id, number, startdate AT TIME ZONE 'America/New_York' AS startdate,
              startdate > NOW() as future,
              COALESCE(LEAD(startdate) OVER (ORDER BY startdate),
                       startdate + INTERVAL '7 days') < NOW() as completed,
@@ -303,7 +303,7 @@ app.get('/api/games/:weekId', requireAuth, async (req, res) => {
     const { weekId } = req.params;
     
     const result = await pool.query(`
-      SELECT g.id, g.date, g.winner,
+      SELECT g.id, g.date AT TIME ZONE 'America/New_York' AS date, g.winner,
              h.id as home_id, h.city as home_city, h.name as home_name, 
              h.wins as home_wins, h.losses as home_losses, h.ties as home_ties,
              a.id as away_id, a.city as away_city, a.name as away_name,
@@ -565,7 +565,7 @@ app.get('/api/weekly-standings-detailed/:weekId', requireAuth, async (req, res) 
     
     // Get the week info
     const weekResult = await pool.query(`
-      SELECT id, number, startdate, factor
+      SELECT id, number, startdate AT TIME ZONE 'America/New_York' AS startdate, factor
       FROM weeks 
       WHERE id = $1
     `, [weekId]);
@@ -631,7 +631,7 @@ app.get('/api/weekly-standings-classic/:weekId', requireAuth, async (req, res) =
     
     // Get the week info
     const weekResult = await pool.query(`
-      SELECT id, number, startdate, factor
+      SELECT id, number, startdate AT TIME ZONE 'America/New_York' AS startdate, factor
       FROM weeks 
       WHERE id = $1
     `, [weekId]);
@@ -644,7 +644,7 @@ app.get('/api/weekly-standings-classic/:weekId', requireAuth, async (req, res) =
     
     // Get all games for this week with team info and scores
     const gamesResult = await pool.query(`
-      SELECT g.id, g.date, g.winner, g.homescore, g.awayscore, g.time, g.info,
+      SELECT g.id, g.date AT TIME ZONE 'America/New_York' AS date, g.winner, g.homescore, g.awayscore, g.time, g.info,
              h.id as home_id, h.city as home_city, h.name as home_name, h.abbr as home_abbr,
              a.id as away_id, a.city as away_city, a.name as away_name, a.abbr as away_abbr
       FROM games g
